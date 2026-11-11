@@ -48,9 +48,42 @@ class TeamApp {
       if (this.tournamentState.mode) {
         this.tournamentMode = this.tournamentState.mode as TournamentMode;
       }
+
+      // Đồng bộ UI sau khi tải trạng thái
+      this.syncModeButtonsUI();
+      this.updateTournamentBanner();
+      this.updateCreateTabHint();
+      if (this.currentTab === 'create') {
+        const createContent = document.getElementById('tab-content-create');
+        if (createContent) {
+          createContent.innerHTML = this.renderCreateTabContent();
+          this.bindCreateTabEvents();
+          if (this.tournamentState.isActive) {
+            this.initTabCreateForm();
+          }
+        }
+      }
     } catch (e) {
       console.warn('Lỗi đọc tournamentState:', e);
     }
+  }
+
+  private syncModeButtonsUI(): void {
+    const isActive = this.tournamentState.isActive;
+    const buttons = document.querySelectorAll('.btn-mode-toggle');
+    buttons.forEach((btn) => {
+      const bMode = btn.getAttribute('data-mode');
+      if (bMode === this.tournamentMode) {
+        btn.className = 't1-btn t1-btn-primary btn-mode-toggle';
+      } else {
+        btn.className = 't1-btn t1-btn-secondary btn-mode-toggle';
+      }
+      if (isActive) {
+        btn.setAttribute('disabled', 'true');
+      } else {
+        btn.removeAttribute('disabled');
+      }
+    });
   }
 
   private getTargetCapacity(): number {
