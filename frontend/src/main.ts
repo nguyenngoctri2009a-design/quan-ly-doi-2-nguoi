@@ -69,7 +69,6 @@ class TeamApp {
   }
 
   private syncModeButtonsUI(): void {
-    const isActive = this.tournamentState.isActive;
     const buttons = document.querySelectorAll('.btn-mode-toggle');
     buttons.forEach((btn) => {
       const bMode = btn.getAttribute('data-mode');
@@ -77,11 +76,6 @@ class TeamApp {
         btn.className = 't1-btn t1-btn-primary btn-mode-toggle';
       } else {
         btn.className = 't1-btn t1-btn-secondary btn-mode-toggle';
-      }
-      if (isActive) {
-        btn.setAttribute('disabled', 'true');
-      } else {
-        btn.removeAttribute('disabled');
       }
     });
   }
@@ -173,13 +167,13 @@ class TeamApp {
           <div class="t1-card" style="padding: 6px 14px; display: flex; align-items: center; gap: 8px; border-radius: 16px;">
             <span style="font-size: 11.5px; font-weight: 850; color: #64748b; text-transform: uppercase;">Thể Thức:</span>
             <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="mode-buttons-container">
-              <button class="t1-btn ${this.tournamentMode === '1v1' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="1v1" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>1v1 Solo</button>
-              <button class="t1-btn ${this.tournamentMode === '2v2' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="2v2" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>2v2 Duo</button>
-              <button class="t1-btn ${this.tournamentMode === '3v3' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="3v3" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>3v3 Trio</button>
-              <button class="t1-btn ${this.tournamentMode === '4v4' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="4v4" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>4v4 Squad</button>
-              <button class="t1-btn ${this.tournamentMode === '5v5' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="5v5" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>5v5 Team</button>
-              <button class="t1-btn ${this.tournamentMode === '10v10' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="10v10" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>10v10 Đại Chiến</button>
-              <button class="t1-btn ${this.tournamentMode === 'custom' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="custom" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>Tự Do</button>
+              <button class="t1-btn ${this.tournamentMode === '1v1' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="1v1" style="padding: 4px 10px; font-size: 11.5px;">1v1 Solo</button>
+              <button class="t1-btn ${this.tournamentMode === '2v2' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="2v2" style="padding: 4px 10px; font-size: 11.5px;">2v2 Duo</button>
+              <button class="t1-btn ${this.tournamentMode === '3v3' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="3v3" style="padding: 4px 10px; font-size: 11.5px;">3v3 Trio</button>
+              <button class="t1-btn ${this.tournamentMode === '4v4' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="4v4" style="padding: 4px 10px; font-size: 11.5px;">4v4 Squad</button>
+              <button class="t1-btn ${this.tournamentMode === '5v5' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="5v5" style="padding: 4px 10px; font-size: 11.5px;">5v5 Team</button>
+              <button class="t1-btn ${this.tournamentMode === '10v10' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="10v10" style="padding: 4px 10px; font-size: 11.5px;">10v10 Đại Chiến</button>
+              <button class="t1-btn ${this.tournamentMode === 'custom' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="custom" style="padding: 4px 10px; font-size: 11.5px;">Tự Do</button>
             </div>
           </div>
         </div>
@@ -561,10 +555,7 @@ class TeamApp {
       await apiService.setTournamentState(this.tournamentState);
       Toast.success(`🚀 ĐÃ BẮT ĐẦU GIẢI ĐẤU THỂ THỨC ${this.tournamentMode.toUpperCase()}! BÂY GIỜ BẠN CÓ THỂ NHẬP ĐỘI.`);
       this.updateTournamentBanner();
-      
-      const modeButtons = document.querySelectorAll('.btn-mode-toggle');
-      modeButtons.forEach((b) => b.setAttribute('disabled', 'true'));
-
+      this.syncModeButtonsUI();
       this.switchTab('create');
     } catch (err) {
       Toast.error(`Không thể bắt đầu: ${err instanceof Error ? err.message : String(err)}`);
@@ -572,25 +563,12 @@ class TeamApp {
   }
 
   private async setTournamentMode(mode: TournamentMode): Promise<void> {
-    if (this.tournamentState.isActive) {
-      Toast.warning('Giải đấu đang diễn ra! Hãy kết thúc giải với mã PIN 2000 trước khi đổi thể thức.');
-      return;
-    }
-
     this.tournamentMode = mode;
     this.tournamentState.mode = mode;
 
-    const buttons = document.querySelectorAll('.btn-mode-toggle');
-    buttons.forEach((btn) => {
-      const bMode = btn.getAttribute('data-mode');
-      if (bMode === mode) {
-        btn.className = 't1-btn t1-btn-primary btn-mode-toggle';
-      } else {
-        btn.className = 't1-btn t1-btn-secondary btn-mode-toggle';
-      }
-    });
+    this.syncModeButtonsUI();
 
-    // Cập nhật lên Firebase
+    // Cập nhật trạng thái thể thức lên Firebase RTDB
     await apiService.setTournamentState(this.tournamentState);
     this.updateTournamentBanner();
 
@@ -604,6 +582,8 @@ class TeamApp {
       }
     }
 
+    const cap = this.getTargetCapacity();
+    Toast.success(`⚡ Đã chuyển sang thể thức ${mode.toUpperCase()} (Tự động ${cap > 0 ? `${cap} ô` : 'tự do'})`);
     this.updateUI();
   }
 
