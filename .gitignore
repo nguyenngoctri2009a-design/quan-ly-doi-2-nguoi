@@ -1,0 +1,28 @@
+# Rust target directories
+backend/target/
+**/target/
+Cargo.lock
+
+# Node.js dependencies & build output
+frontend/node_modules/
+**/node_modules/
+frontend/dist/
+**/dist/
+
+# Environment files and credentials
+.env
+*.env
+!.env.example
+firebase-credentials.json
+*.pem
+*.key
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.DS_Store
+Thumbs.db
+
+# Logs
+*.log
