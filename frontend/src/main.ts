@@ -1,10 +1,11 @@
 import { apiService } from './services/api';
 import { realtimeSSE } from './services/sse';
-import type { CreateTeamDto, MemberItem, Team, TournamentMode, UpdateTeamDto } from './types/team';
+import type { CreateTeamDto, MemberItem, Team, TournamentMode, TournamentState, UpdateTeamDto } from './types/team';
 import { renderKpiCards, type KpiData } from './components/KpiCards';
 import { renderTeamTable } from './components/TeamTable';
 import { TeamModal } from './components/TeamModal';
 import { ConfirmModal } from './components/ConfirmModal';
+import { PinModal } from './components/PinModal';
 import { Toast } from './components/Toast';
 
 type ActiveTab = 'list' | 'create' | 'manage';
@@ -17,10 +18,12 @@ class TeamApp {
   private isSseConnected = false;
   private currentTab: ActiveTab = 'list';
   private tournamentMode: TournamentMode = '2v2';
+  private tournamentState: TournamentState = { isActive: false, mode: '2v2' };
   private searchDebounceTimer: number | null = null;
 
   private teamModal!: TeamModal;
   private confirmModal!: ConfirmModal;
+  private pinModal!: PinModal;
 
   constructor(appRoot: HTMLElement) {
     this.appRoot = appRoot;
@@ -29,10 +32,25 @@ class TeamApp {
   public async init(): Promise<void> {
     this.teamModal = new TeamModal();
     this.confirmModal = new ConfirmModal();
+    this.pinModal = new PinModal();
 
     this.renderSkeleton();
     this.setupSSE();
+
+    // Tải trạng thái giải đấu đã lưu trước đó (kể cả F5 tải lại trang vẫn giữ nguyên)
+    await this.fetchTournamentState();
     await this.fetchTeams();
+  }
+
+  private async fetchTournamentState(): Promise<void> {
+    try {
+      this.tournamentState = await apiService.getTournamentState();
+      if (this.tournamentState.mode) {
+        this.tournamentMode = this.tournamentState.mode as TournamentMode;
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc tournamentState:', e);
+    }
   }
 
   private getTargetCapacity(): number {
@@ -75,6 +93,7 @@ class TeamApp {
   private renderSkeleton(): void {
     const kpi = this.calculateKpi();
     const nextDefaultNum = apiService.findNextDefaultNumber(this.teams);
+    const isActive = this.tournamentState.isActive;
 
     this.appRoot.innerHTML = `
       <div class="app-container">
@@ -93,6 +112,11 @@ class TeamApp {
             </div>
           </div>
         </header>
+
+        <!-- BANNER TRẠNG THÁI GIẢI ĐẤU (BẮT ĐẦU / KẾT THÚC VỚI MÃ PIN 2000) -->
+        <div id="tournament-banner-wrapper">
+          ${this.renderTournamentBanner()}
+        </div>
 
         <!-- THANH ĐIỀU HƯỚNG 3 TAB CHÍNH & THỂ THỨC GIẢI -->
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;">
@@ -116,13 +140,13 @@ class TeamApp {
           <div class="t1-card" style="padding: 6px 14px; display: flex; align-items: center; gap: 8px; border-radius: 16px;">
             <span style="font-size: 11.5px; font-weight: 850; color: #64748b; text-transform: uppercase;">Thể Thức:</span>
             <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="mode-buttons-container">
-              <button class="t1-btn ${this.tournamentMode === '1v1' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="1v1" style="padding: 4px 10px; font-size: 11.5px;">1v1</button>
-              <button class="t1-btn ${this.tournamentMode === '2v2' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="2v2" style="padding: 4px 10px; font-size: 11.5px;">2v2</button>
-              <button class="t1-btn ${this.tournamentMode === '3v3' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="3v3" style="padding: 4px 10px; font-size: 11.5px;">3v3</button>
-              <button class="t1-btn ${this.tournamentMode === '4v4' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="4v4" style="padding: 4px 10px; font-size: 11.5px;">4v4</button>
-              <button class="t1-btn ${this.tournamentMode === '5v5' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="5v5" style="padding: 4px 10px; font-size: 11.5px;">5v5</button>
-              <button class="t1-btn ${this.tournamentMode === '10v10' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="10v10" style="padding: 4px 10px; font-size: 11.5px;">10v10</button>
-              <button class="t1-btn ${this.tournamentMode === 'custom' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="custom" style="padding: 4px 10px; font-size: 11.5px;">Tự Do</button>
+              <button class="t1-btn ${this.tournamentMode === '1v1' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="1v1" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>1v1 Solo</button>
+              <button class="t1-btn ${this.tournamentMode === '2v2' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="2v2" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>2v2 Duo</button>
+              <button class="t1-btn ${this.tournamentMode === '3v3' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="3v3" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>3v3 Trio</button>
+              <button class="t1-btn ${this.tournamentMode === '4v4' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="4v4" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>4v4 Squad</button>
+              <button class="t1-btn ${this.tournamentMode === '5v5' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="5v5" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>5v5 Team</button>
+              <button class="t1-btn ${this.tournamentMode === '10v10' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="10v10" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>10v10 Đại Chiến</button>
+              <button class="t1-btn ${this.tournamentMode === 'custom' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="custom" style="padding: 4px 10px; font-size: 11.5px;" ${isActive ? 'disabled' : ''}>Tự Do</button>
             </div>
           </div>
         </div>
@@ -242,6 +266,54 @@ class TeamApp {
 
     this.bindDOMEvents();
     this.initTabCreateForm();
+  }
+
+  private renderTournamentBanner(): string {
+    const isActive = this.tournamentState.isActive;
+
+    if (isActive) {
+      return `
+        <div class="tournament-active-banner">
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <span style="font-size: 32px; animation: bounceIcon 1s infinite alternate;">🔥</span>
+            <div>
+              <div style="font-size: 16.5px; font-weight: 900; letter-spacing: -0.3px;">
+                GIẢI ĐẤU ĐANG DIỄN RA — THỂ THỨC: <span style="text-decoration: underline;">${this.tournamentMode.toUpperCase()}</span>
+              </div>
+              <div style="font-size: 12.5px; opacity: 0.9; font-weight: 600; margin-top: 2px;">
+                Tất cả bảng đấu và thông tin đã được khóa. Để kết thúc giải, vui lòng nhấn nút Kết Thúc bên cạnh và nhập mã PIN 2000.
+              </div>
+            </div>
+          </div>
+          <div>
+            <button class="t1-btn t1-btn-danger" id="btn-end-tournament" style="padding: 10px 22px; font-size: 13.5px; font-weight: 900; box-shadow: 0 4px 14px rgba(0,0,0,0.2);">
+              <span>🛑 KẾT THÚC GIẢI ĐẤU</span>
+            </button>
+          </div>
+        </div>
+      `;
+    } else {
+      return `
+        <div class="t1-card" style="padding: 16px 24px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border-color: #a7f3d0;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <span style="font-size: 26px;">🏁</span>
+            <div>
+              <div style="font-size: 15px; font-weight: 850; color: #065f46;">
+                Sẵn sàng khởi tranh giải đấu thể thức: <span style="font-weight: 900; color: #047857;">${this.tournamentMode.toUpperCase()}</span>
+              </div>
+              <div style="font-size: 12px; color: #047857; opacity: 0.8; font-weight: 600;">
+                Hãy chọn thể thức ở thanh bên dưới và bấm nút Bắt Đầu Giải Đấu để khóa danh sách thi đấu.
+              </div>
+            </div>
+          </div>
+          <div>
+            <button class="t1-btn t1-btn-success" id="btn-start-tournament" style="padding: 10px 24px; font-size: 13.5px; font-weight: 900;">
+              <span>🚀 BẮT ĐẦU GIẢI ĐẤU</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }
   }
 
   private renderManageTab(): string {
@@ -402,8 +474,15 @@ class TeamApp {
     }
   }
 
-  private setTournamentMode(mode: TournamentMode): void {
+  private async setTournamentMode(mode: TournamentMode): Promise<void> {
+    if (this.tournamentState.isActive) {
+      Toast.warning('Giải đấu đang diễn ra! Hãy kết thúc giải với mã PIN 2000 trước khi đổi thể thức.');
+      return;
+    }
+
     this.tournamentMode = mode;
+    this.tournamentState.mode = mode;
+
     const buttons = document.querySelectorAll('.btn-mode-toggle');
     buttons.forEach((btn) => {
       const bMode = btn.getAttribute('data-mode');
@@ -420,7 +499,18 @@ class TeamApp {
       batchBtn.innerHTML = `<span>⚡ Thêm Nhanh ${cap > 0 ? cap : 3} Ô</span>`;
     }
 
+    // Cập nhật lên Firebase
+    await apiService.setTournamentState(this.tournamentState);
+    this.updateTournamentBanner();
     this.updateUI();
+  }
+
+  private updateTournamentBanner(): void {
+    const wrapper = document.getElementById('tournament-banner-wrapper');
+    if (wrapper) {
+      wrapper.innerHTML = this.renderTournamentBanner();
+      this.bindBannerEvents();
+    }
   }
 
   private initTabCreateForm(): void {
@@ -470,7 +560,6 @@ class TeamApp {
       <button type="button" class="btn-remove-member" title="Xóa ô nhập này">✕</button>
     `;
 
-    // Giới hạn 6 chữ số
     const stkInput = row.querySelector('.tab-member-stk-input') as HTMLInputElement;
     stkInput?.addEventListener('input', () => {
       stkInput.value = stkInput.value.replace(/\D/g, '').slice(0, 6);
@@ -551,7 +640,53 @@ class TeamApp {
     );
   }
 
+  private bindBannerEvents(): void {
+    // Nút Bắt Đầu Giải Đấu
+    document.getElementById('btn-start-tournament')?.addEventListener('click', async () => {
+      if (this.teams.length === 0) {
+        Toast.warning('Cần có ít nhất 1 đội để bắt đầu giải đấu!');
+        return;
+      }
+
+      this.tournamentState = {
+        isActive: true,
+        mode: this.tournamentMode,
+        startedAt: Date.now(),
+      };
+
+      try {
+        await apiService.setTournamentState(this.tournamentState);
+        Toast.success(`🔥 ĐÃ BẮT ĐẦU GIẢI ĐẤU THỂ THỨC ${this.tournamentMode.toUpperCase()}!`);
+        this.updateTournamentBanner();
+        // Disable mode buttons
+        const modeButtons = document.querySelectorAll('.btn-mode-toggle');
+        modeButtons.forEach((b) => b.setAttribute('disabled', 'true'));
+      } catch (err) {
+        Toast.error(`Không thể bắt đầu: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    });
+
+    // Nút Kết Thúc Giải Đấu (Mở mã PIN 2000)
+    document.getElementById('btn-end-tournament')?.addEventListener('click', () => {
+      this.pinModal.open(async () => {
+        this.tournamentState = {
+          isActive: false,
+          mode: this.tournamentMode,
+          endedAt: Date.now(),
+        };
+        await apiService.setTournamentState(this.tournamentState);
+        Toast.success('✅ ĐÃ KẾT THÚC GIẢI ĐẤU THÀNH CÔNG VỚI MÃ PIN 2000!');
+        this.updateTournamentBanner();
+        // Re-enable mode buttons
+        const modeButtons = document.querySelectorAll('.btn-mode-toggle');
+        modeButtons.forEach((b) => b.removeAttribute('disabled'));
+      });
+    });
+  }
+
   private bindDOMEvents(): void {
+    this.bindBannerEvents();
+
     // 3 Tabs
     document.getElementById('tab-nav-list')?.addEventListener('click', () => this.switchTab('list'));
     document.getElementById('tab-nav-create')?.addEventListener('click', () => this.switchTab('create'));
@@ -610,7 +745,6 @@ class TeamApp {
   }
 
   private bindManageTabEvents(): void {
-    // Ràng buộc STK chỉ 6 số cho tất cả input trong Tab 3
     const stkInputs = document.querySelectorAll('.manage-member-stk');
     stkInputs.forEach((inp) => {
       inp.addEventListener('input', (e) => {
@@ -619,7 +753,6 @@ class TeamApp {
       });
     });
 
-    // Thêm thành viên vào đội trong Tab 3
     const addMemberBtns = document.querySelectorAll('.btn-add-member-to-card');
     addMemberBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -633,7 +766,6 @@ class TeamApp {
       });
     });
 
-    // Xóa từng thành viên trong Tab 3
     const delMemberBtns = document.querySelectorAll('.btn-delete-single-member');
     delMemberBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -647,7 +779,6 @@ class TeamApp {
       });
     });
 
-    // Lưu thay đổi của đội trong Tab 3
     const saveCardBtns = document.querySelectorAll('.btn-save-card-team');
     saveCardBtns.forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -694,7 +825,6 @@ class TeamApp {
       });
     });
 
-    // Nút xóa toàn bộ đội
     const deleteBtns = document.querySelectorAll('.team-manage-card .btn-delete-team');
     deleteBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -742,11 +872,8 @@ class TeamApp {
       };
       await this.handleCreateTeam(dto);
 
-      // Reset form
       if (nameInp) nameInp.value = '';
       this.initTabCreateForm();
-
-      // Tự động chuyển về Tab Danh Sách để xem kết quả
       this.switchTab('list');
     } catch (err) {
       errBox.textContent = err instanceof Error ? err.message : String(err);

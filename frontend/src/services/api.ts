@@ -1,4 +1,4 @@
-import type { ApiResponse, CreateTeamDto, MemberItem, Team, TeamListResponse, UpdateTeamDto } from '../types/team';
+import type { ApiResponse, CreateTeamDto, MemberItem, Team, TeamListResponse, TournamentState, UpdateTeamDto } from '../types/team';
 
 const FIREBASE_RTDB_URL = 'https://mechamay-7cbce-default-rtdb.asia-southeast1.firebasedatabase.app';
 const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + '/api';
@@ -40,7 +40,30 @@ class ApiService {
     }
   }
 
-  // --- TRỰC TIẾP FIREBASE REALTIME DATABASE ---
+  // --- TRẠNG THÁI GIẢI ĐẤU (BẮT ĐẦU / KẾT THÚC) ---
+  public async getTournamentState(): Promise<TournamentState> {
+    try {
+      const res = await fetch(`${FIREBASE_RTDB_URL}/tournamentState.json`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data) return data as TournamentState;
+      }
+    } catch (e) {
+      console.warn('Lỗi lấy trạng thái giải đấu từ Firebase:', e);
+    }
+    return { isActive: false, mode: '2v2' };
+  }
+
+  public async setTournamentState(state: TournamentState): Promise<void> {
+    const res = await fetch(`${FIREBASE_RTDB_URL}/tournamentState.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state),
+    });
+    if (!res.ok) throw new Error('Không thể cập nhật trạng thái giải đấu lên Firebase');
+  }
+
+  // --- TRỰC TIẾP FIREBASE REALTIME DATABASE CHO TEAMS ---
   private async firebaseGetTeams(): Promise<TeamListResponse> {
     const res = await fetch(`${FIREBASE_RTDB_URL}/teams.json`);
     if (!res.ok) throw new Error(`Lỗi Firebase: HTTP ${res.status}`);
@@ -48,7 +71,6 @@ class ApiService {
 
     const teams: Team[] = data ? Object.values(data) : [];
     
-    // Đồng bộ members và memberDetails
     for (const t of teams) {
       if (!t.memberDetails || !Array.isArray(t.memberDetails) || t.memberDetails.length === 0) {
         const details: MemberItem[] = [];
@@ -137,13 +159,11 @@ class ApiService {
     });
     if (fromBackend) return fromBackend;
 
-    // Firebase Direct mode
     const current = await this.firebaseGetTeams();
     let finalName = dto.name?.trim();
     let customName = false;
 
     if (finalName) {
-      // Nếu tên người dùng nhập khác với dạng "Đội n"
       customName = true;
     } else {
       const nextNum = this.findNextDefaultNumber(current.teams);

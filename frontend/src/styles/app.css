@@ -2,7 +2,7 @@
 .app-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 28px 20px 60px 20px;
+  padding: 24px 20px 60px 20px;
 }
 
 /* Header */
@@ -51,6 +51,31 @@
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Banner Thông Báo Giải Đấu Đang Diễn Ra (Khi Chưa Kết Thúc) */
+.tournament-active-banner {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #ffffff;
+  border-radius: 20px;
+  padding: 16px 24px;
+  margin-bottom: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 8px 24px rgba(2, 132, 199, 0.3);
+  animation: pulseGlow 2.5s infinite alternate;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+@keyframes pulseGlow {
+  from {
+    box-shadow: 0 4px 16px rgba(2, 132, 199, 0.25);
+  }
+  to {
+    box-shadow: 0 10px 30px rgba(2, 132, 199, 0.45);
+  }
 }
 
 /* ==========================================================================

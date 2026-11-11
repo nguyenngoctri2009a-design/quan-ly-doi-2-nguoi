@@ -1,3 +1,10 @@
+export interface TournamentState {
+  isActive: boolean;
+  mode: string;
+  startedAt?: number;
+  endedAt?: number;
+}
+
 export interface MemberItem {
   name: string;
   stk?: string; // STK gồm tối đa 6 số
@@ -53,6 +60,7 @@ export type TeamEventType =
   | { type: 'team_created'; data: Team }
   | { type: 'team_updated'; data: Team }
   | { type: 'team_deleted'; data: { id: string } }
-  | { type: 'sync_all'; data: Team[] };
+  | { type: 'sync_all'; data: Team[] }
+  | { type: 'tournament_state'; data: TournamentState };
 
 export type TournamentMode = '1v1' | '2v2' | '3v3' | '4v4' | '5v5' | '10v10' | 'custom';
