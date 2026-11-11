@@ -32,6 +32,24 @@ export interface BracketState {
   updatedAt?: number;
 }
 
+export interface EliminatedTeamRecord {
+  id: string;
+  name: string;
+  members: string[];
+  eliminatedAtWave: number;
+  eliminatedAt: number;
+}
+
+export interface WaveAttendanceState {
+  currentWave: number; // 1 = Đợt 1, 2 = Đợt 2, ...
+  teamStatus: Record<string, 'V' | 'X' | 'none'>; // id đội -> 'V' | 'X' | 'none'
+  activeTeamIds: string[]; // Các đội còn lại trong đợt hiện tại
+  eliminatedTeams: EliminatedTeamRecord[]; // Các đội đã bị loại
+  championId?: string;
+  championName?: string;
+  updatedAt: number;
+}
+
 export interface MemberItem {
   name: string;
   stk?: string; // STK gồm tối đa 6 số

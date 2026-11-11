@@ -1,4 +1,4 @@
-import type { ApiResponse, BracketState, CreateTeamDto, IgStkMember, MemberItem, Team, TeamListResponse, TournamentState, UpdateTeamDto } from '../types/team';
+import type { ApiResponse, BracketState, CreateTeamDto, IgStkMember, MemberItem, Team, TeamListResponse, TournamentState, UpdateTeamDto, WaveAttendanceState } from '../types/team';
 
 const FIREBASE_RTDB_URL = 'https://mechamay-7cbce-default-rtdb.asia-southeast1.firebasedatabase.app';
 const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + '/api';
@@ -84,6 +84,29 @@ class ApiService {
       body: JSON.stringify(state),
     });
     if (!res.ok) throw new Error('Không thể lưu trạng thái vòng đấu lên Firebase');
+  }
+
+  // --- QUẢN LÝ ĐIỂM DANH & TỰ ĐỘNG LOẠI ĐỘI THEO ĐỢT (WAVE ATTENDANCE) ---
+  public async getWaveAttendanceState(): Promise<WaveAttendanceState | null> {
+    try {
+      const res = await fetch(`${FIREBASE_RTDB_URL}/waveAttendance.json`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data) return data as WaveAttendanceState;
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc waveAttendance từ Firebase:', e);
+    }
+    return null;
+  }
+
+  public async setWaveAttendanceState(state: WaveAttendanceState | null): Promise<void> {
+    const res = await fetch(`${FIREBASE_RTDB_URL}/waveAttendance.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state),
+    });
+    if (!res.ok) throw new Error('Không thể lưu trạng thái điểm danh theo đợt lên Firebase');
   }
 
   // --- QUẢN LÝ DANH SÁCH IG - STK ---

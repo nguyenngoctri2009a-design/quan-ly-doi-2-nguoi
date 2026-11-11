@@ -1,10 +1,12 @@
-import type { Team, TournamentMode } from '../types/team';
+import type { Team, TournamentMode, WaveAttendanceState } from '../types/team';
 
 export function renderTeamTable(
   teams: Team[],
   isLoading: boolean,
   searchQuery: string,
-  mode: TournamentMode = '2v2'
+  mode: TournamentMode = '2v2',
+  waveAttendance: WaveAttendanceState | null = null,
+  isTournamentActive: boolean = false
 ): string {
   if (isLoading) {
     return `
@@ -40,14 +42,15 @@ export function renderTeamTable(
     'custom': 0,
   };
   const targetCapacity = expectedMembersMap[mode];
+  const currentWave = waveAttendance ? waveAttendance.currentWave : 1;
 
   const rows = teams
     .map((team, index) => {
       const rank = index + 1;
       let rankBadge = `<span style="font-weight: 800; color: #64748b;">#${rank}</span>`;
-      if (rank === 1) rankBadge = '🥇';
-      else if (rank === 2) rankBadge = '🥈';
-      else if (rank === 3) rankBadge = '🥉';
+      if (waveAttendance?.championId === team.id) {
+        rankBadge = '👑';
+      }
 
       const customBadge = team.customName
         ? `<span class="t1-pill t1-pill-warning" style="margin-left: 8px; font-size: 10.5px;">Tự đặt</span>`
@@ -82,21 +85,66 @@ export function renderTeamTable(
         </button>
       `;
 
-      // Trạng thái đội
-      const memberCount = memberDetails.length;
-      let statusPill = '';
-      if (targetCapacity > 0) {
-        if (memberCount >= targetCapacity) {
-          statusPill = `<span class="t1-pill t1-pill-success">✓ Đủ ${memberCount}/${targetCapacity} người</span>`;
-        } else {
-          statusPill = `<span class="t1-pill t1-pill-warning">⚡ ${memberCount}/${targetCapacity} người</span>`;
-        }
+      // Điểm danh V / X theo đợt
+      const currentStatus = waveAttendance?.teamStatus?.[team.id] || 'none';
+      const isV = currentStatus === 'V';
+      const isX = currentStatus === 'X';
+
+      let attendanceCell = '';
+      if (isTournamentActive) {
+        attendanceCell = `
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button
+              type="button"
+              class="t1-btn btn-toggle-v ${isV ? 't1-btn-success' : 't1-btn-secondary'}"
+              data-team-id="${team.id}"
+              data-current-val="${currentStatus}"
+              style="padding: 6px 14px; font-size: 13px; font-weight: 950; min-width: 58px; ${isV ? 'box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);' : 'opacity: 0.75;'}"
+              title="Tích V: Đủ điều kiện, tiếp tục vào Đợt ${currentWave + 1}"
+            >
+              <span>${isV ? '✓ V' : 'V'}</span>
+            </button>
+            <button
+              type="button"
+              class="t1-btn btn-toggle-x ${isX ? 't1-btn-danger' : 't1-btn-secondary'}"
+              data-team-id="${team.id}"
+              data-current-val="${currentStatus}"
+              style="padding: 6px 14px; font-size: 13px; font-weight: 950; min-width: 58px; ${isX ? 'box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);' : 'opacity: 0.75;'}"
+              title="Tích X: Bị loại khi hoàn tất Đợt ${currentWave}"
+            >
+              <span>${isX ? '✕ X' : 'X'}</span>
+            </button>
+          </div>
+        `;
       } else {
-        statusPill = `<span class="t1-pill t1-pill-cyan">👥 ${memberCount} người</span>`;
+        attendanceCell = `
+          <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">(Chờ bắt đầu giải)</span>
+        `;
+      }
+
+      // Nhãn trạng thái hiển thị
+      let statusPill = '';
+      if (waveAttendance?.championId === team.id) {
+        statusPill = `<span class="t1-pill t1-pill-gold" style="font-weight: 950;">👑 QUÁN QUÂN VÔ ĐỊCH</span>`;
+      } else if (isV) {
+        statusPill = `<span class="t1-pill t1-pill-success" style="font-weight: 900;">✓ Đi tiếp Đợt ${currentWave + 1}</span>`;
+      } else if (isX) {
+        statusPill = `<span class="t1-pill t1-pill-danger" style="font-weight: 900;">❌ Sẽ bị loại</span>`;
+      } else {
+        const memberCount = memberDetails.length;
+        if (targetCapacity > 0) {
+          if (memberCount >= targetCapacity) {
+            statusPill = `<span class="t1-pill t1-pill-cyan">Đủ ${memberCount}/${targetCapacity} người</span>`;
+          } else {
+            statusPill = `<span class="t1-pill t1-pill-warning">⚡ ${memberCount}/${targetCapacity} người</span>`;
+          }
+        } else {
+          statusPill = `<span class="t1-pill t1-pill-cyan">👥 ${memberCount} người</span>`;
+        }
       }
 
       return `
-        <tr data-team-id="${team.id}">
+        <tr data-team-id="${team.id}" style="${isX ? 'background: #fff1f2;' : (isV ? 'background: #f0fdf4;' : '')}">
           <td style="width: 50px; text-align: center; font-size: 16px;">${rankBadge}</td>
           <td style="min-width: 150px;">
             <div style="display: flex; align-items: center;">
@@ -105,13 +153,18 @@ export function renderTeamTable(
             </div>
             <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">ID: ${team.id.substring(0, 8)}...</div>
           </td>
-          <td style="min-width: 300px;">
+          <td style="min-width: 280px;">
             <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px;">
               ${memberChips}
               ${quickAddBtn}
             </div>
           </td>
-          <td style="min-width: 160px; white-space: nowrap;">${statusPill}</td>
+          <td style="min-width: 160px; white-space: nowrap;">
+            ${attendanceCell}
+          </td>
+          <td style="min-width: 150px; white-space: nowrap;">
+            ${statusPill}
+          </td>
           <td style="text-align: right; white-space: nowrap; width: 140px;">
             <button
               class="t1-btn t1-btn-gold btn-edit-team"
@@ -144,6 +197,7 @@ export function renderTeamTable(
             <th style="width: 50px; text-align: center;">STT</th>
             <th>TÊN ĐỘI</th>
             <th>DANH SÁCH THÀNH VIÊN & STK (6 SỐ)</th>
+            <th style="min-width: 160px;">ĐIỂM DANH (ĐỢT ${currentWave})</th>
             <th>TRẠNG THÁI</th>
             <th style="text-align: right;">THAO TÁC</th>
           </tr>
@@ -155,3 +209,4 @@ export function renderTeamTable(
     </div>
   `;
 }
+

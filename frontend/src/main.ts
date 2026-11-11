@@ -1,6 +1,6 @@
 import { apiService } from './services/api';
 import { realtimeSSE } from './services/sse';
-import type { CreateTeamDto, IgStkMember, MemberItem, ParsedIgStkItem, Team, TournamentMode, TournamentState, UpdateTeamDto } from './types/team';
+import type { CreateTeamDto, IgStkMember, MemberItem, ParsedIgStkItem, Team, TournamentMode, TournamentState, UpdateTeamDto, WaveAttendanceState } from './types/team';
 import { renderKpiCards, type KpiData } from './components/KpiCards';
 import { renderTeamTable } from './components/TeamTable';
 import { TeamModal } from './components/TeamModal';
@@ -9,6 +9,8 @@ import { PinModal } from './components/PinModal';
 import { Toast } from './components/Toast';
 import { exportIgStkToExcel, parseIgStkInput, renderIgStkTab } from './components/IgStkManager';
 import { IgStkEditModal } from './components/IgStkEditModal';
+import { renderWaveToolbar } from './components/WaveToolbar';
+import { EliminatedTeamsModal } from './components/EliminatedTeamsModal';
 
 type ActiveTab = 'list' | 'create' | 'manage' | 'igstk';
 
@@ -21,6 +23,7 @@ class TeamApp {
   private currentTab: ActiveTab = 'list';
   private tournamentMode: TournamentMode = '3v3';
   private tournamentState: TournamentState = { isActive: false, mode: '3v3' };
+  private waveState: WaveAttendanceState | null = null;
   private searchDebounceTimer: number | null = null;
 
   // Quản lý danh sách IG - STK
@@ -30,6 +33,7 @@ class TeamApp {
   private selectedIgStkIds = new Set<string>();
   private skipDuplicates = true;
   private igStkEditModal!: IgStkEditModal;
+  private eliminatedTeamsModal!: EliminatedTeamsModal;
 
   private teamModal!: TeamModal;
   private confirmModal!: ConfirmModal;
@@ -44,12 +48,14 @@ class TeamApp {
     this.confirmModal = new ConfirmModal();
     this.pinModal = new PinModal();
     this.igStkEditModal = new IgStkEditModal();
+    this.eliminatedTeamsModal = new EliminatedTeamsModal();
 
     this.renderSkeleton();
     this.setupSSE();
 
     // Tải trạng thái giải đấu & danh sách IG-STK đã lưu trước đó
     await this.fetchTournamentState();
+    this.waveState = await apiService.getWaveAttendanceState();
     this.igStkMembers = await apiService.getIgStkMembers();
     await this.fetchTeams();
   }
@@ -182,7 +188,7 @@ class TeamApp {
           <div class="t1-tabs-nav" style="margin-bottom: 0;">
             <button class="t1-tab-btn ${this.currentTab === 'list' ? 'active' : ''}" id="tab-nav-list">
               <span>📋</span>
-              <span>Tab 1: Danh Sách Thi Đấu</span>
+              <span>Tab 1: Danh Sách & Điểm Danh Đợt</span>
             </button>
             <button class="t1-tab-btn ${this.currentTab === 'create' ? 'active' : ''}" id="tab-nav-create">
               <span>➕</span>
@@ -219,6 +225,10 @@ class TeamApp {
             ${renderKpiCards(kpi)}
           </div>
 
+          <div id="wave-toolbar-container">
+            ${renderWaveToolbar(this.waveState, this.getActiveTeams().length, isActive)}
+          </div>
+
           <div class="t1-card toolbar-card">
             <div class="search-box-wrapper">
               <span class="search-icon">🔍</span>
@@ -231,12 +241,12 @@ class TeamApp {
               />
             </div>
             <div style="font-size: 13px; font-weight: 700; color: var(--t1-text-muted);" id="counter-summary">
-              Hiển thị: <strong>${this.teams.length}</strong> đội
+              Hiển thị: <strong>${this.getActiveTeams().length}</strong> đội
             </div>
           </div>
 
           <div id="table-container">
-            ${renderTeamTable(this.teams, this.isLoading, this.searchQuery, this.tournamentMode)}
+            ${renderTeamTable(this.getActiveTeams(), this.isLoading, this.searchQuery, this.tournamentMode, this.waveState, isActive)}
           </div>
         </div>
 
@@ -594,11 +604,22 @@ class TeamApp {
       startedAt: Date.now(),
     };
 
+    // Khởi tạo trạng thái Đợt 1 cho giải đấu
+    this.waveState = {
+      currentWave: 1,
+      teamStatus: {},
+      activeTeamIds: this.teams.map((t) => t.id),
+      eliminatedTeams: [],
+      updatedAt: Date.now(),
+    };
+
     try {
       await apiService.setTournamentState(this.tournamentState);
-      Toast.success(`🚀 ĐÃ BẮT ĐẦU GIẢI ĐẤU THỂ THỨC ${this.tournamentMode.toUpperCase()}! BÂY GIỜ BẠN CÓ THỂ NHẬP ĐỘI.`);
+      await apiService.setWaveAttendanceState(this.waveState);
+      Toast.success(`🚀 ĐÃ BẮT ĐẦU GIẢI ĐẤU THỂ THỨC ${this.tournamentMode.toUpperCase()} (ĐỢT 1)! BÂY GIỜ BẠN CÓ THỂ NHẬP ĐỘI.`);
       this.updateTournamentBanner();
       this.syncModeButtonsUI();
+      this.updateUI();
       this.switchTab('create');
     } catch (err) {
       Toast.error(`Không thể bắt đầu: ${err instanceof Error ? err.message : String(err)}`);
@@ -740,10 +761,24 @@ class TeamApp {
       counterSummary.innerHTML = `Hiển thị: <strong>${this.filteredTeams().length}</strong> đội`;
     }
 
+    const waveToolbar = document.getElementById('wave-toolbar-container');
+    if (waveToolbar) {
+      waveToolbar.innerHTML = renderWaveToolbar(this.waveState, this.getActiveTeams().length, this.tournamentState.isActive);
+      this.bindWaveEvents();
+    }
+
     const tableContainer = document.getElementById('table-container');
     if (tableContainer) {
-      tableContainer.innerHTML = renderTeamTable(this.filteredTeams(), this.isLoading, this.searchQuery, this.tournamentMode);
+      tableContainer.innerHTML = renderTeamTable(
+        this.filteredTeams(),
+        this.isLoading,
+        this.searchQuery,
+        this.tournamentMode,
+        this.waveState,
+        this.tournamentState.isActive
+      );
       this.bindTableButtons();
+      this.bindWaveRowButtons();
     }
 
     const ssePill = document.getElementById('sse-status-pill');
@@ -756,6 +791,185 @@ class TeamApp {
     if (this.currentTab === 'manage') {
       this.updateManageTab();
     }
+  }
+
+  private bindWaveEvents(): void {
+    if (!this.tournamentState.isActive) return;
+
+    // Tích tất cả V
+    document.getElementById('btn-tick-all-v')?.addEventListener('click', async () => {
+      if (!this.waveState) {
+        this.waveState = {
+          currentWave: 1,
+          teamStatus: {},
+          activeTeamIds: this.teams.map((t) => t.id),
+          eliminatedTeams: [],
+          updatedAt: Date.now(),
+        };
+      }
+      const activeTeams = this.getActiveTeams();
+      activeTeams.forEach((t) => {
+        this.waveState!.teamStatus[t.id] = 'V';
+      });
+      this.waveState.updatedAt = Date.now();
+      await apiService.setWaveAttendanceState(this.waveState);
+      Toast.success(`✔️ Đã tích V (Đi tiếp) cho toàn bộ ${activeTeams.length} đội đang thi đấu!`);
+      this.updateUI();
+    });
+
+    // Bỏ chọn tất cả
+    document.getElementById('btn-untick-all')?.addEventListener('click', async () => {
+      if (!this.waveState) return;
+      const activeTeams = this.getActiveTeams();
+      activeTeams.forEach((t) => {
+        delete this.waveState!.teamStatus[t.id];
+      });
+      this.waveState.updatedAt = Date.now();
+      await apiService.setWaveAttendanceState(this.waveState);
+      Toast.info('🔄 Đã bỏ chọn tất cả trạng thái V / X ở đợt này.');
+      this.updateUI();
+    });
+
+    // Xem danh sách đội đã bị loại
+    document.getElementById('btn-view-eliminated')?.addEventListener('click', () => {
+      const eliminated = this.waveState?.eliminatedTeams || [];
+      this.eliminatedTeamsModal.open(eliminated);
+    });
+
+    // Nút Hoàn tất đợt (Chốt đợt & tự động loại đội X)
+    document.getElementById('btn-complete-wave')?.addEventListener('click', () => {
+      const currentWave = this.waveState ? this.waveState.currentWave : 1;
+      const activeTeams = this.getActiveTeams();
+
+      if (activeTeams.length === 0) {
+        Toast.warning('Hiện không còn đội nào đang thi đấu trong giải!');
+        return;
+      }
+
+      const statusMap = this.waveState?.teamStatus || {};
+      const xTeams = activeTeams.filter((t) => statusMap[t.id] === 'X');
+      const vTeams = activeTeams.filter((t) => statusMap[t.id] === 'V');
+      const unmarkedTeams = activeTeams.filter((t) => !statusMap[t.id] || statusMap[t.id] === 'none');
+
+      let confirmDesc = `Chốt kết quả Đợt ${currentWave}: Loại ${xTeams.length} đội (X), Giữ lại ${vTeams.length} đội (V) để vào Đợt ${currentWave + 1}`;
+      if (unmarkedTeams.length > 0) {
+        confirmDesc += ` (Chú ý: Còn ${unmarkedTeams.length} đội chưa tích sẽ được giữ lại)`;
+      }
+
+      this.confirmModal.open(confirmDesc, async () => {
+        try {
+          if (!this.waveState) {
+            this.waveState = {
+              currentWave: 1,
+              teamStatus: {},
+              activeTeamIds: activeTeams.map((t) => t.id),
+              eliminatedTeams: [],
+              updatedAt: Date.now(),
+            };
+          }
+
+          if (!this.waveState.eliminatedTeams) {
+            this.waveState.eliminatedTeams = [];
+          }
+
+          // Chuyển các đội tích X vào danh sách đội bị loại
+          for (const xt of xTeams) {
+            const members = (xt.memberDetails && xt.memberDetails.length > 0)
+              ? xt.memberDetails.map((m) => m.name)
+              : (xt.members || [xt.member1, xt.member2].filter(Boolean));
+
+            this.waveState.eliminatedTeams.push({
+              id: xt.id,
+              name: xt.name,
+              members,
+              eliminatedAtWave: currentWave,
+              eliminatedAt: Date.now(),
+            });
+          }
+
+          // Cập nhật danh sách đội còn sống
+          const survivingTeams = activeTeams.filter((t) => statusMap[t.id] !== 'X');
+          this.waveState.activeTeamIds = survivingTeams.map((t) => t.id);
+
+          // Sang đợt mới và reset bảng tích
+          this.waveState.currentWave = currentWave + 1;
+          this.waveState.teamStatus = {};
+          this.waveState.updatedAt = Date.now();
+
+          // Kiểm tra nếu chỉ còn 1 đội -> Tìm ra nhà vô địch
+          if (survivingTeams.length === 1) {
+            this.waveState.championId = survivingTeams[0].id;
+            this.waveState.championName = survivingTeams[0].name;
+            Toast.success(`🏆 CHÚC MỪNG NHÀ VÔ ĐỊCH: "${survivingTeams[0].name}" ĐÃ CHIẾN THẮNG GIẢI ĐẤU!`);
+          } else {
+            Toast.success(`🎉 ĐÃ HOÀN TẤT ĐỢT ${currentWave}! Loại ${xTeams.length} đội, ${survivingTeams.length} đội chính thức bước vào ĐỢT ${this.waveState.currentWave}.`);
+          }
+
+          await apiService.setWaveAttendanceState(this.waveState);
+          this.updateUI();
+        } catch (err) {
+          Toast.error(`Lỗi khi chốt đợt: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    });
+  }
+
+  private bindWaveRowButtons(): void {
+    if (!this.tournamentState.isActive) return;
+
+    // Nút toggle V
+    const vButtons = document.querySelectorAll('.btn-toggle-v');
+    vButtons.forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const teamId = btn.getAttribute('data-team-id');
+        if (!teamId) return;
+
+        if (!this.waveState) {
+          this.waveState = {
+            currentWave: 1,
+            teamStatus: {},
+            activeTeamIds: this.teams.map((t) => t.id),
+            eliminatedTeams: [],
+            updatedAt: Date.now(),
+          };
+        }
+
+        const currentVal = this.waveState.teamStatus[teamId] || 'none';
+        this.waveState.teamStatus[teamId] = currentVal === 'V' ? 'none' : 'V';
+        this.waveState.updatedAt = Date.now();
+
+        await apiService.setWaveAttendanceState(this.waveState);
+        this.updateUI();
+      });
+    });
+
+    // Nút toggle X
+    const xButtons = document.querySelectorAll('.btn-toggle-x');
+    xButtons.forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const teamId = btn.getAttribute('data-team-id');
+        if (!teamId) return;
+
+        if (!this.waveState) {
+          this.waveState = {
+            currentWave: 1,
+            teamStatus: {},
+            activeTeamIds: this.teams.map((t) => t.id),
+            eliminatedTeams: [],
+            updatedAt: Date.now(),
+          };
+        }
+
+        const currentVal = this.waveState.teamStatus[teamId] || 'none';
+        this.waveState.teamStatus[teamId] = currentVal === 'X' ? 'none' : 'X';
+        this.waveState.updatedAt = Date.now();
+
+        await apiService.setWaveAttendanceState(this.waveState);
+        this.updateUI();
+      });
+    });
   }
 
   private updateManageTab(): void {
@@ -979,12 +1193,21 @@ class TeamApp {
     });
   }
 
-  private filteredTeams(): Team[] {
-    if (!this.searchQuery.trim()) {
+  private getActiveTeams(): Team[] {
+    if (!this.tournamentState.isActive || !this.waveState || !this.waveState.eliminatedTeams) {
       return this.teams;
     }
+    const eliminatedSet = new Set(this.waveState.eliminatedTeams.map((e) => e.id));
+    return this.teams.filter((t) => !eliminatedSet.has(t.id));
+  }
+
+  private filteredTeams(): Team[] {
+    const pool = this.getActiveTeams();
+    if (!this.searchQuery.trim()) {
+      return pool;
+    }
     const q = this.searchQuery.trim().toLowerCase();
-    return this.teams.filter(
+    return pool.filter(
       (t) =>
         t.name.toLowerCase().includes(q) ||
         (t.memberDetails && t.memberDetails.some((m) => m.name.toLowerCase().includes(q) || (m.stk && m.stk.includes(q)))) ||
