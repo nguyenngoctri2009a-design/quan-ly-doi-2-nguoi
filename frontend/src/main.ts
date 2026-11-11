@@ -92,6 +92,11 @@ class TeamApp {
         buttonEl.title = `Chọn thể thức ${bMode?.toUpperCase()}`;
       }
     });
+
+    const modeCard = document.getElementById('mode-selector-card');
+    if (modeCard) {
+      modeCard.style.display = isActive ? 'none' : 'flex';
+    }
   }
 
   private getTargetCapacity(): number {
@@ -177,8 +182,8 @@ class TeamApp {
             </button>
           </div>
 
-          <!-- Tournament Mode Selector -->
-          <div class="t1-card" style="padding: 6px 14px; display: flex; align-items: center; gap: 8px; border-radius: 16px;">
+          <!-- Tournament Mode Selector (Ẩn khi giải đấu đang diễn ra) -->
+          <div id="mode-selector-card" class="t1-card" style="padding: 6px 14px; display: ${isActive ? 'none' : 'flex'}; align-items: center; gap: 8px; border-radius: 16px;">
             <span style="font-size: 11.5px; font-weight: 850; color: #64748b; text-transform: uppercase;">Thể Thức:</span>
             <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="mode-buttons-container">
               <button class="t1-btn ${this.tournamentMode === '1v1' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="1v1" style="padding: 4px 10px; font-size: 11.5px;">1v1 Solo</button>
@@ -349,11 +354,8 @@ class TeamApp {
           <div style="display: flex; align-items: center; gap: 14px;">
             <span style="font-size: 32px; animation: bounceIcon 1s infinite alternate;">🔥</span>
             <div>
-              <div style="font-size: 16.5px; font-weight: 900; letter-spacing: -0.3px;">
+              <div style="font-size: 17px; font-weight: 900; letter-spacing: -0.3px;">
                 GIẢI ĐẤU ĐANG DIỄN RA — THỂ THỨC: <span style="text-decoration: underline;">${this.tournamentMode.toUpperCase()}</span>
-              </div>
-              <div style="font-size: 12.5px; opacity: 0.9; font-weight: 600; margin-top: 2px;">
-                Cổng đăng ký đội đang mở. Để kết thúc giải đấu, vui lòng nhấn nút Kết Thúc bên cạnh và nhập mã PIN 2000.
               </div>
             </div>
           </div>
