@@ -327,15 +327,17 @@ class TeamApp {
         <hr style="border: none; border-top: 1px solid #f1f5f9; margin: 20px 0;" />
 
         <form id="tab-create-form">
-          <div class="form-group">
+          <div class="form-group" style="position: relative;">
             <label class="form-label" for="tab-input-team-name">TÊN ĐỘI (MẶC ĐỊNH SẼ ĐẾM TỰ ĐỘNG)</label>
             <input
               type="text"
               id="tab-input-team-name"
               class="t1-input"
-              placeholder="Để trống sẽ tự động lấy: Đội ${nextDefaultNum}"
+              placeholder="Để trống sẽ tự động lấy: Đội ${nextDefaultNum} (hoặc gõ chữ tìm kiếm)..."
               maxlength="50"
+              autocomplete="off"
             />
+            <div id="tab-team-name-dropdown" class="t1-autocomplete-dropdown" style="display: none;"></div>
             <div class="form-hint" id="tab-team-name-hint">
               💡 Để trống ô này: Hệ thống tự động đặt tên là <strong>Đội ${nextDefaultNum}</strong>
             </div>
@@ -701,14 +703,16 @@ class TeamApp {
     row.className = 'dynamic-member-row';
     row.innerHTML = `
       <div class="member-input-badge">#${idx}</div>
-      <div class="member-name-flex">
+      <div class="member-name-flex" style="position: relative;">
         <input
           type="text"
           class="t1-input tab-member-name-input"
-          placeholder="Tên thành viên ${idx}..."
+          placeholder="Tên thành viên ${idx} (Gõ chữ cái để tìm nhanh)..."
           maxlength="50"
           value="${valName}"
+          autocomplete="off"
         />
+        <div class="t1-autocomplete-dropdown tab-member-dropdown" style="display: none;"></div>
       </div>
       <div class="member-stk-flex">
         <input
@@ -724,7 +728,14 @@ class TeamApp {
       <button type="button" class="btn-remove-member" title="Xóa ô nhập này">✕</button>
     `;
 
+    const nameInput = row.querySelector('.tab-member-name-input') as HTMLInputElement;
     const stkInput = row.querySelector('.tab-member-stk-input') as HTMLInputElement;
+    const dropdown = row.querySelector('.tab-member-dropdown') as HTMLElement;
+
+    if (nameInput && stkInput && dropdown) {
+      this.setupMemberAutocomplete(nameInput, stkInput, dropdown);
+    }
+
     stkInput?.addEventListener('input', () => {
       stkInput.value = stkInput.value.replace(/\D/g, '').slice(0, 6);
     });
@@ -736,6 +747,198 @@ class TeamApp {
     });
 
     container.appendChild(row);
+  }
+
+  private getAvailableMembers(): { name: string; stk: string }[] {
+    const map = new Map<string, string>();
+
+    // 1. Dữ liệu từ Tab 4 (Danh sách IG - STK từ Discord)
+    for (const m of this.igStkMembers) {
+      if (m.ig && m.ig.trim()) {
+        map.set(m.ig.trim(), m.stk?.trim() || '');
+      }
+    }
+
+    // 2. Dữ liệu từ Tab 1 (Các đội & thành viên đã có trong giải)
+    for (const t of this.teams) {
+      if (t.memberDetails) {
+        for (const md of t.memberDetails) {
+          if (md.name && md.name.trim() && !map.has(md.name.trim())) {
+            map.set(md.name.trim(), md.stk?.trim() || '');
+          }
+        }
+      }
+      if (t.members) {
+        for (const m of t.members) {
+          if (m && m.trim() && !map.has(m.trim())) {
+            map.set(m.trim(), '');
+          }
+        }
+      }
+    }
+
+    const list: { name: string; stk: string }[] = [];
+    map.forEach((stk, name) => {
+      list.push({ name, stk });
+    });
+    return list;
+  }
+
+  private setupMemberAutocomplete(
+    nameInput: HTMLInputElement,
+    stkInput: HTMLInputElement | null,
+    dropdown: HTMLElement
+  ): void {
+    let activeIndex = -1;
+
+    const hideDropdown = () => {
+      dropdown.style.display = 'none';
+      dropdown.innerHTML = '';
+      activeIndex = -1;
+    };
+
+    const selectItem = (item: { name: string; stk: string }) => {
+      nameInput.value = item.name;
+      if (stkInput && item.stk) {
+        stkInput.value = item.stk.slice(0, 6);
+      }
+      hideDropdown();
+
+      // Hiệu ứng viền xanh thông minh báo hiệu đã tự động khớp
+      nameInput.style.borderColor = '#10b981';
+      nameInput.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.2)';
+      if (stkInput) {
+        stkInput.style.borderColor = '#10b981';
+        stkInput.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.2)';
+      }
+      setTimeout(() => {
+        nameInput.style.borderColor = '';
+        nameInput.style.boxShadow = '';
+        if (stkInput) {
+          stkInput.style.borderColor = '';
+          stkInput.style.boxShadow = '';
+        }
+      }, 1000);
+    };
+
+    nameInput.addEventListener('input', () => {
+      const rawVal = nameInput.value.trim();
+      if (!rawVal) {
+        hideDropdown();
+        return;
+      }
+
+      const q = this.removeVietnameseTones(rawVal);
+      const pool = this.getAvailableMembers();
+
+      // Tìm kiếm thông minh: không phân biệt hoa thường, hỗ trợ có dấu và không dấu
+      const matches = pool.filter((item) => {
+        const norm = this.removeVietnameseTones(item.name);
+        // Khớp đầu từ, khớp ký tự đầu các từ (viết tắt), hoặc khớp chuỗi
+        return (
+          norm.startsWith(q) ||
+          norm.split(/\s+/).some((w) => w.startsWith(q)) ||
+          norm.includes(q)
+        );
+      });
+
+      // Sắp xếp ưu tiên: khớp từ đầu > khớp từ trong tên > chứa chuỗi
+      matches.sort((a, b) => {
+        const na = this.removeVietnameseTones(a.name);
+        const nb = this.removeVietnameseTones(b.name);
+        const aStart = na.startsWith(q) ? 0 : 1;
+        const bStart = nb.startsWith(q) ? 0 : 1;
+        if (aStart !== bStart) return aStart - bStart;
+        return a.name.localeCompare(b.name);
+      });
+
+      // Tự động nhận diện và chọn nếu chỉ có duy nhất 1 kết quả khớp chính xác:
+      // Ví dụ: Gõ 't' -> nhiều kết quả; gõ tiếp 'r' -> 'Trí', 'Trung'; gõ 'tri' -> chỉ còn 'Trí' -> Tự chọn Trí và điền STK!
+      if (q.length >= 2 && matches.length === 1) {
+        const single = matches[0];
+        const singleNorm = this.removeVietnameseTones(single.name);
+        if (singleNorm.startsWith(q) || singleNorm === q) {
+          selectItem(single);
+          return;
+        }
+      }
+
+      if (matches.length === 0) {
+        hideDropdown();
+        return;
+      }
+
+      // Hiển thị danh sách gợi ý (tối đa 8 mục)
+      const topMatches = matches.slice(0, 8);
+      dropdown.innerHTML = topMatches
+        .map((item, idx) => `
+          <div class="t1-autocomplete-item" data-idx="${idx}">
+            <div style="font-size: 13.5px; font-weight: 800; color: #1e293b;">
+              👤 ${item.name}
+            </div>
+            ${item.stk ? `<span class="stk-pill" style="font-size: 11px; padding: 2px 8px;">STK: ${item.stk}</span>` : '<span style="font-size: 11px; color: #94a3b8; font-weight: 600;">Chưa có STK</span>'}
+          </div>
+        `)
+        .join('');
+
+      dropdown.style.display = 'block';
+
+      const items = dropdown.querySelectorAll('.t1-autocomplete-item');
+      items.forEach((el) => {
+        el.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          const idx = parseInt(el.getAttribute('data-idx') || '0', 10);
+          selectItem(topMatches[idx]);
+        });
+      });
+    });
+
+    nameInput.addEventListener('keydown', (e) => {
+      const items = dropdown.querySelectorAll('.t1-autocomplete-item');
+      if (dropdown.style.display === 'none' || items.length === 0) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeIndex = (activeIndex + 1) % items.length;
+        this.updateActiveAutocompleteItem(items, activeIndex);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeIndex = (activeIndex - 1 + items.length) % items.length;
+        this.updateActiveAutocompleteItem(items, activeIndex);
+      } else if (e.key === 'Enter') {
+        if (activeIndex >= 0 && activeIndex < items.length) {
+          e.preventDefault();
+          (items[activeIndex] as HTMLElement).dispatchEvent(new MouseEvent('mousedown'));
+        }
+      } else if (e.key === 'Escape') {
+        hideDropdown();
+      }
+    });
+
+    nameInput.addEventListener('blur', () => {
+      setTimeout(hideDropdown, 200);
+    });
+  }
+
+  private updateActiveAutocompleteItem(items: NodeListOf<Element>, activeIndex: number): void {
+    items.forEach((item, idx) => {
+      if (idx === activeIndex) {
+        item.classList.add('active');
+        (item as HTMLElement).scrollIntoView({ block: 'nearest' });
+      } else {
+        item.classList.remove('active');
+      }
+    });
+  }
+
+  private removeVietnameseTones(str: string): string {
+    return str
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .toLowerCase()
+      .trim();
   }
 
   private reindexTabMemberFields(): void {
@@ -1236,6 +1439,13 @@ class TeamApp {
   }
 
   private bindCreateTabEvents(): void {
+    // Autocomplete thông minh cho ô Tên Đội
+    const teamNameInput = document.getElementById('tab-input-team-name') as HTMLInputElement;
+    const teamDropdown = document.getElementById('tab-team-name-dropdown') as HTMLElement;
+    if (teamNameInput && teamDropdown) {
+      this.setupMemberAutocomplete(teamNameInput, null, teamDropdown);
+    }
+
     // Nút bắt đầu từ bên trong Tab 2
     document.getElementById('btn-start-from-tab')?.addEventListener('click', async () => {
       await this.startTournamentAction();

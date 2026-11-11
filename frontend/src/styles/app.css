@@ -375,3 +375,42 @@
   border-color: #cbd5e1;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
 }
+
+/* ==========================================================================
+   T1 SMART AUTOCOMPLETE DROPDOWN
+   ========================================================================== */
+.t1-autocomplete-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: #ffffff;
+  border-radius: 14px;
+  border: 1.5px solid #bae6fd;
+  box-shadow: 0 14px 30px rgba(14, 165, 233, 0.16), 0 4px 10px rgba(0, 0, 0, 0.05);
+  max-height: 240px;
+  overflow-y: auto;
+  animation: fadeInDown 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.t1-autocomplete-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f5f9;
+  transition: all 0.15s ease;
+}
+
+.t1-autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.t1-autocomplete-item:hover,
+.t1-autocomplete-item.active {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%) !important;
+  color: #065f46 !important;
+  padding-left: 18px;
+}
