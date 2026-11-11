@@ -16,11 +16,11 @@ export class TeamModal {
   private render(): void {
     this.overlay.innerHTML = `
       <div class="t1-modal-box">
-        <h3 id="modal-title" style="margin-top: 0; margin-bottom: 8px; font-size: 19px; font-weight: 900; color: var(--t1-text);">
+        <h3 id="modal-title" style="margin-top: 0; margin-bottom: 8px; font-size: 20px; font-weight: 900; color: var(--t1-text);">
           Thêm Đội Mới
         </h3>
         <p id="modal-subtitle" style="margin: 0 0 20px 0; font-size: 13px; color: var(--t1-text-muted); font-weight: 600;">
-          Nhập thông tin đội 2 người. Nếu để trống tên đội, hệ thống sẽ tự động gán tên mặc định theo thứ tự.
+          Để trống tên đội để hệ thống tự sinh số mặc định ("Đội 1", "Đội 2"...).
         </p>
 
         <form id="team-form">
@@ -33,29 +33,20 @@ export class TeamModal {
               placeholder="VD: Đội 1, Chiến Binh Rồng, Sát Thủ..."
               maxlength="50"
             />
-            <div class="form-hint">Tối đa 50 ký tự. Để trống để nhận tên mặc định tự tăng.</div>
+            <div class="form-hint">Tối đa 50 ký tự. Để trống sẽ tự gán số mặc định tăng dần.</div>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="input-member-1">Thành Viên 1</label>
-            <input
-              type="text"
-              id="input-member-1"
-              class="t1-input"
-              placeholder="Tên thành viên thứ nhất..."
-              maxlength="50"
-            />
-          </div>
-
-          <div class="form-group">
-            <label class="form-label" for="input-member-2">Thành Viên 2</label>
-            <input
-              type="text"
-              id="input-member-2"
-              class="t1-input"
-              placeholder="Tên thành viên thứ hai..."
-              maxlength="50"
-            />
+          <div class="form-group" style="margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <label class="form-label" style="margin: 0;">DANH SÁCH THÀNH VIÊN (TỐI ĐA 2 NGƯỜI)</label>
+              <button type="button" class="t1-btn t1-btn-primary" id="btn-add-member-input" style="padding: 6px 14px; font-size: 12px;">
+                <span>＋ Thêm Ô Nhập Tên</span>
+              </button>
+            </div>
+            
+            <div id="modal-member-inputs-container" class="member-inputs-container">
+              <!-- Cứ ấn cộng sẽ tự sinh ô nhập tại đây -->
+            </div>
           </div>
 
           <div id="modal-error-box" style="display: none; margin-bottom: 16px; padding: 10px 14px; border-radius: 12px; background: #fee2e2; color: #991b1b; font-size: 12.5px; font-weight: 700;"></div>
@@ -83,11 +74,73 @@ export class TeamModal {
       }
     });
 
+    const addMemberBtn = this.overlay.querySelector('#btn-add-member-input');
+    addMemberBtn?.addEventListener('click', () => {
+      this.addMemberField('');
+    });
+
     const form = this.overlay.querySelector('#team-form') as HTMLFormElement;
     form?.addEventListener('submit', async (e) => {
       e.preventDefault();
       await this.handleSubmit();
     });
+  }
+
+  private addMemberField(initialValue = ''): void {
+    const container = this.overlay.querySelector('#modal-member-inputs-container') as HTMLElement;
+    const currentRows = container.querySelectorAll('.dynamic-member-row');
+
+    if (currentRows.length >= 2) {
+      alert('Mỗi đội tối đa 2 thành viên!');
+      return;
+    }
+
+    const memberIndex = currentRows.length + 1;
+    const row = document.createElement('div');
+    row.className = 'dynamic-member-row';
+    row.innerHTML = `
+      <div class="member-input-badge">#${memberIndex}</div>
+      <input
+        type="text"
+        class="t1-input member-name-input"
+        placeholder="Nhập tên thành viên ${memberIndex}..."
+        maxlength="50"
+        value="${initialValue}"
+      />
+      <button type="button" class="btn-remove-member" title="Xóa ô nhập">✕</button>
+    `;
+
+    const removeBtn = row.querySelector('.btn-remove-member');
+    removeBtn?.addEventListener('click', () => {
+      row.remove();
+      this.reindexMemberFields();
+    });
+
+    container.appendChild(row);
+    const input = row.querySelector('input') as HTMLInputElement;
+    input.focus();
+    this.updateAddButtonState();
+  }
+
+  private reindexMemberFields(): void {
+    const container = this.overlay.querySelector('#modal-member-inputs-container') as HTMLElement;
+    const rows = container.querySelectorAll('.dynamic-member-row');
+    rows.forEach((r, idx) => {
+      const badge = r.querySelector('.member-input-badge');
+      const input = r.querySelector('input');
+      if (badge) badge.textContent = `#${idx + 1}`;
+      if (input) input.placeholder = `Nhập tên thành viên ${idx + 1}...`;
+    });
+    this.updateAddButtonState();
+  }
+
+  private updateAddButtonState(): void {
+    const container = this.overlay.querySelector('#modal-member-inputs-container') as HTMLElement;
+    const addBtn = this.overlay.querySelector('#btn-add-member-input') as HTMLButtonElement;
+    const currentCount = container.querySelectorAll('.dynamic-member-row').length;
+    if (addBtn) {
+      addBtn.style.display = currentCount >= 2 ? 'none' : 'inline-flex';
+    }
   }
 
   public open(team?: Team, onSave?: (dto: CreateTeamDto | UpdateTeamDto, id?: string) => Promise<void>): void {
@@ -97,26 +150,33 @@ export class TeamModal {
     const titleEl = this.overlay.querySelector('#modal-title') as HTMLElement;
     const subEl = this.overlay.querySelector('#modal-subtitle') as HTMLElement;
     const nameInput = this.overlay.querySelector('#input-team-name') as HTMLInputElement;
-    const m1Input = this.overlay.querySelector('#input-member-1') as HTMLInputElement;
-    const m2Input = this.overlay.querySelector('#input-member-2') as HTMLInputElement;
     const errBox = this.overlay.querySelector('#modal-error-box') as HTMLElement;
+    const container = this.overlay.querySelector('#modal-member-inputs-container') as HTMLElement;
 
     errBox.style.display = 'none';
+    container.innerHTML = '';
 
     if (team) {
       titleEl.textContent = `Chỉnh Sửa: ${team.name}`;
-      subEl.textContent = 'Cập nhật lại tên hiển thị hoặc thông tin 2 thành viên của đội.';
+      subEl.textContent = 'Cập nhật lại tên đội hoặc thành viên.';
       nameInput.value = team.name;
-      m1Input.value = team.member1;
-      m2Input.value = team.member2;
+
+      if (team.member1.trim()) this.addMemberField(team.member1.trim());
+      if (team.member2.trim()) this.addMemberField(team.member2.trim());
+
+      // Nếu chưa có thành viên nào, tự tạo 1 ô mặc định
+      if (!team.member1.trim() && !team.member2.trim()) {
+        this.addMemberField('');
+      }
     } else {
       titleEl.textContent = 'Thêm Đội Mới';
-      subEl.textContent = 'Nhập thông tin đội 2 người. Nếu để trống tên đội, hệ thống sẽ tự sinh số mặc định.';
+      subEl.textContent = 'Để trống tên đội để hệ thống tự sinh số mặc định. Bấm dấu ＋ để thêm ô nhập thành viên.';
       nameInput.value = '';
-      m1Input.value = '';
-      m2Input.value = '';
+      // Tự động có sẵn 1 ô đầu tiên cho tiện
+      this.addMemberField('');
     }
 
+    this.updateAddButtonState();
     this.overlay.classList.add('active');
     setTimeout(() => nameInput.focus(), 100);
   }
@@ -128,14 +188,20 @@ export class TeamModal {
 
   private async handleSubmit(): Promise<void> {
     const nameInput = this.overlay.querySelector('#input-team-name') as HTMLInputElement;
-    const m1Input = this.overlay.querySelector('#input-member-1') as HTMLInputElement;
-    const m2Input = this.overlay.querySelector('#input-member-2') as HTMLInputElement;
     const submitBtn = this.overlay.querySelector('#btn-submit-modal') as HTMLButtonElement;
     const errBox = this.overlay.querySelector('#modal-error-box') as HTMLElement;
+    const container = this.overlay.querySelector('#modal-member-inputs-container') as HTMLElement;
+
+    const inputs = container.querySelectorAll('.member-name-input') as NodeListOf<HTMLInputElement>;
+    const members: string[] = [];
+    inputs.forEach((inp) => {
+      const val = inp.value.trim();
+      if (val) members.push(val);
+    });
 
     const name = nameInput.value.trim();
-    const member1 = m1Input.value.trim();
-    const member2 = m2Input.value.trim();
+    const member1 = members[0] || '';
+    const member2 = members[1] || '';
 
     if (this.currentTeam && !name) {
       errBox.textContent = 'Tên đội không được để trống khi chỉnh sửa.';

@@ -23,7 +23,7 @@ export function renderTeamTable(
           ${searchQuery ? `Không tìm thấy kết quả cho "${searchQuery}"` : 'Chưa có đội nào trong danh sách'}
         </div>
         <div class="empty-desc">
-          ${searchQuery ? 'Hãy thử tìm kiếm với từ khóa khác.' : 'Bấm nút "+ Thêm Đội Mới" bên trên để tạo đội đầu tiên.'}
+          ${searchQuery ? 'Hãy thử tìm kiếm với từ khóa khác.' : 'Bấm sang tab "➕ Tạo Đội Mới" hoặc nút phía trên để thêm.'}
         </div>
       </div>
     `;
@@ -49,10 +49,9 @@ export function renderTeamTable(
           </div>
         `
         : `
-          <div class="member-chip member-chip-empty">
-            <div class="avatar-circle">-</div>
-            <span>Chưa có</span>
-          </div>
+          <button class="btn-quick-add-member btn-slot-add" data-id="${team.id}" data-slot="1">
+            <span>＋</span> <span>Thêm tên</span>
+          </button>
         `;
 
       const m2Html = team.member2.trim()
@@ -63,10 +62,9 @@ export function renderTeamTable(
           </div>
         `
         : `
-          <div class="member-chip member-chip-empty">
-            <div class="avatar-circle">-</div>
-            <span>Chưa có</span>
-          </div>
+          <button class="btn-quick-add-member btn-slot-add" data-id="${team.id}" data-slot="2">
+            <span>＋</span> <span>Thêm tên</span>
+          </button>
         `;
 
       const isFull = Boolean(team.member1.trim() && team.member2.trim());
