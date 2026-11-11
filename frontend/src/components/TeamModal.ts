@@ -1,4 +1,4 @@
-import type { CreateTeamDto, Team, UpdateTeamDto } from '../types/team';
+import type { CreateTeamDto, MemberItem, Team, UpdateTeamDto } from '../types/team';
 
 export class TeamModal {
   private overlay: HTMLElement;
@@ -15,12 +15,12 @@ export class TeamModal {
 
   private render(): void {
     this.overlay.innerHTML = `
-      <div class="t1-modal-box" style="max-width: 580px;">
+      <div class="t1-modal-box" style="max-width: 600px;">
         <h3 id="modal-title" style="margin-top: 0; margin-bottom: 8px; font-size: 20px; font-weight: 900; color: var(--t1-text);">
-          Thêm Đội Mới
+          Chỉnh Sửa Đội Thi Đấu
         </h3>
         <p id="modal-subtitle" style="margin: 0 0 20px 0; font-size: 13px; color: var(--t1-text-muted); font-weight: 600;">
-          Để trống tên đội để hệ thống tự sinh số mặc định. Bấm dấu ＋ để thêm thành viên (1v1, 2v2, 3v3, 5v5, 10v10...).
+          Chỉnh sửa tên đội, thêm/xóa thành viên và cập nhật STK (tối đa 6 số).
         </p>
 
         <form id="team-form">
@@ -30,17 +30,17 @@ export class TeamModal {
               type="text"
               id="input-team-name"
               class="t1-input"
-              placeholder="VD: Đội 1, Chiến Binh Rồng, Sát Thủ..."
+              placeholder="VD: Đội 1, Đội 2, Sát Thủ, Rồng Vàng..."
               maxlength="50"
             />
-            <div class="form-hint">Tối đa 50 ký tự. Để trống sẽ tự gán số mặc định tăng dần.</div>
+            <div class="form-hint">Tối đa 50 ký tự. Có thể chỉnh sửa thành bất kỳ tên nào.</div>
           </div>
 
           <div class="form-group" style="margin-bottom: 8px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-              <label class="form-label" style="margin: 0;">DANH SÁCH THÀNH VIÊN</label>
+              <label class="form-label" style="margin: 0;">DANH SÁCH THÀNH VIÊN & STK (6 SỐ)</label>
               <button type="button" class="t1-btn t1-btn-primary" id="btn-add-member-input" style="padding: 6px 14px; font-size: 12px;">
-                <span>＋ Thêm Ô Nhập Tên</span>
+                <span>＋ Thêm Thành Viên</span>
               </button>
             </div>
             
@@ -76,7 +76,7 @@ export class TeamModal {
 
     const addMemberBtn = this.overlay.querySelector('#btn-add-member-input');
     addMemberBtn?.addEventListener('click', () => {
-      this.addMemberField('');
+      this.addMemberField('', '');
     });
 
     const form = this.overlay.querySelector('#team-form') as HTMLFormElement;
@@ -86,7 +86,7 @@ export class TeamModal {
     });
   }
 
-  private addMemberField(initialValue = ''): void {
+  private addMemberField(initialName = '', initialStk = ''): void {
     const container = this.overlay.querySelector('#modal-member-inputs-container') as HTMLElement;
     const currentRows = container.querySelectorAll('.dynamic-member-row');
 
@@ -100,15 +100,34 @@ export class TeamModal {
     row.className = 'dynamic-member-row';
     row.innerHTML = `
       <div class="member-input-badge">#${memberIndex}</div>
-      <input
-        type="text"
-        class="t1-input member-name-input"
-        placeholder="Nhập tên thành viên ${memberIndex}..."
-        maxlength="50"
-        value="${initialValue}"
-      />
-      <button type="button" class="btn-remove-member" title="Xóa ô nhập này">✕</button>
+      <div class="member-name-flex">
+        <input
+          type="text"
+          class="t1-input member-name-input"
+          placeholder="Tên thành viên ${memberIndex}..."
+          maxlength="50"
+          value="${initialName}"
+        />
+      </div>
+      <div class="member-stk-flex">
+        <input
+          type="text"
+          class="t1-input stk-input member-stk-input"
+          placeholder="STK (6 số)"
+          maxlength="6"
+          pattern="[0-9]*"
+          value="${initialStk}"
+          title="STK gồm tối đa 6 chữ số"
+        />
+      </div>
+      <button type="button" class="btn-remove-member" title="Xóa thành viên này">✕</button>
     `;
+
+    // Ràng buộc chỉ cho gõ số vào ô STK
+    const stkInp = row.querySelector('.member-stk-input') as HTMLInputElement;
+    stkInp?.addEventListener('input', () => {
+      stkInp.value = stkInp.value.replace(/\D/g, '').slice(0, 6);
+    });
 
     const removeBtn = row.querySelector('.btn-remove-member');
     removeBtn?.addEventListener('click', () => {
@@ -117,7 +136,7 @@ export class TeamModal {
     });
 
     container.appendChild(row);
-    const input = row.querySelector('input') as HTMLInputElement;
+    const input = row.querySelector('.member-name-input') as HTMLInputElement;
     input.focus();
   }
 
@@ -126,9 +145,9 @@ export class TeamModal {
     const rows = container.querySelectorAll('.dynamic-member-row');
     rows.forEach((r, idx) => {
       const badge = r.querySelector('.member-input-badge');
-      const input = r.querySelector('input');
+      const input = r.querySelector('.member-name-input') as HTMLInputElement;
       if (badge) badge.textContent = `#${idx + 1}`;
-      if (input) input.placeholder = `Nhập tên thành viên ${idx + 1}...`;
+      if (input) input.placeholder = `Tên thành viên ${idx + 1}...`;
     });
   }
 
@@ -147,23 +166,23 @@ export class TeamModal {
 
     if (team) {
       titleEl.textContent = `Chỉnh Sửa: ${team.name}`;
-      subEl.textContent = 'Cập nhật lại tên đội hoặc danh sách thành viên.';
+      subEl.textContent = 'Chỉnh sửa tên đội, thêm/xóa thành viên và cập nhật STK (6 số).';
       nameInput.value = team.name;
 
-      const members = (team.members && team.members.length > 0)
-        ? team.members
-        : [team.member1, team.member2].filter(Boolean);
+      const details = (team.memberDetails && team.memberDetails.length > 0)
+        ? team.memberDetails
+        : (team.members || [team.member1, team.member2].filter(Boolean)).map((m) => ({ name: m, stk: '' }));
 
-      if (members.length > 0) {
-        members.forEach((m) => this.addMemberField(m));
+      if (details.length > 0) {
+        details.forEach((d) => this.addMemberField(d.name, d.stk || ''));
       } else {
-        this.addMemberField('');
+        this.addMemberField('', '');
       }
     } else {
       titleEl.textContent = 'Thêm Đội Mới';
-      subEl.textContent = 'Để trống tên đội để tự sinh số. Cứ ấn ＋ để thêm các ô nhập tên thành viên.';
+      subEl.textContent = 'Để trống tên đội để tự sinh "Đội 1", "Đội 2"... Bấm dấu ＋ để thêm thành viên.';
       nameInput.value = '';
-      this.addMemberField('');
+      this.addMemberField('', '');
     }
 
     this.overlay.classList.add('active');
@@ -181,11 +200,17 @@ export class TeamModal {
     const errBox = this.overlay.querySelector('#modal-error-box') as HTMLElement;
     const container = this.overlay.querySelector('#modal-member-inputs-container') as HTMLElement;
 
-    const inputs = container.querySelectorAll('.member-name-input') as NodeListOf<HTMLInputElement>;
-    const members: string[] = [];
-    inputs.forEach((inp) => {
-      const val = inp.value.trim();
-      if (val) members.push(val);
+    const rows = container.querySelectorAll('.dynamic-member-row');
+    const memberDetails: MemberItem[] = [];
+
+    rows.forEach((row) => {
+      const nameInp = row.querySelector('.member-name-input') as HTMLInputElement;
+      const stkInp = row.querySelector('.member-stk-input') as HTMLInputElement;
+      const name = nameInp ? nameInp.value.trim() : '';
+      const stk = stkInp ? stkInp.value.trim().slice(0, 6) : '';
+      if (name) {
+        memberDetails.push({ name, stk });
+      }
     });
 
     const name = nameInput.value.trim();
@@ -202,10 +227,12 @@ export class TeamModal {
 
     try {
       if (this.onSaveCallback) {
+        const members = memberDetails.map((m) => m.name);
         if (this.currentTeam) {
           const dto: UpdateTeamDto = {
             name,
             members,
+            memberDetails,
             member1: members[0] || '',
             member2: members[1] || '',
           };
@@ -214,6 +241,7 @@ export class TeamModal {
           const dto: CreateTeamDto = {
             name: name || undefined,
             members,
+            memberDetails,
             member1: members[0] || undefined,
             member2: members[1] || undefined,
           };

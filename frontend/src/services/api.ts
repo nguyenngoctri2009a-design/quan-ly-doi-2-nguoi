@@ -1,4 +1,4 @@
-import type { ApiResponse, CreateTeamDto, Team, TeamListResponse, UpdateTeamDto } from '../types/team';
+import type { ApiResponse, CreateTeamDto, MemberItem, Team, TeamListResponse, UpdateTeamDto } from '../types/team';
 
 const FIREBASE_RTDB_URL = 'https://mechamay-7cbce-default-rtdb.asia-southeast1.firebasedatabase.app';
 const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + '/api';
@@ -20,7 +20,6 @@ class ApiService {
       });
 
       if (response.status === 404) {
-        console.warn('Backend API trả về 404, tự động chuyển sang chế độ Firebase Realtime Direct...');
         this.useDirectFirebase = true;
         return null;
       }
@@ -49,13 +48,23 @@ class ApiService {
 
     const teams: Team[] = data ? Object.values(data) : [];
     
-    // Đảm bảo members luôn có mảng đầy đủ
+    // Đồng bộ members và memberDetails
     for (const t of teams) {
-      if (!t.members || !Array.isArray(t.members) || t.members.length === 0) {
-        const list: string[] = [];
-        if (t.member1?.trim()) list.push(t.member1.trim());
-        if (t.member2?.trim()) list.push(t.member2.trim());
-        t.members = list;
+      if (!t.memberDetails || !Array.isArray(t.memberDetails) || t.memberDetails.length === 0) {
+        const details: MemberItem[] = [];
+        if (t.members && Array.isArray(t.members) && t.members.length > 0) {
+          for (const m of t.members) {
+            if (m.trim()) details.push({ name: m.trim(), stk: '' });
+          }
+        } else {
+          if (t.member1?.trim()) details.push({ name: t.member1.trim(), stk: '' });
+          if (t.member2?.trim()) details.push({ name: t.member2.trim(), stk: '' });
+        }
+        t.memberDetails = details;
+      }
+
+      if (!t.members || t.members.length === 0) {
+        t.members = (t.memberDetails || []).map((m) => m.name);
       }
     }
 
@@ -64,13 +73,13 @@ class ApiService {
     const totalTeams = teams.length;
     let totalMembers = 0;
     for (const t of teams) {
-      totalMembers += (t.members || []).filter((m) => m.trim().length > 0).length;
+      totalMembers += (t.memberDetails || []).filter((m) => m.name.trim().length > 0).length;
     }
 
     return { teams, totalTeams, totalMembers };
   }
 
-  private findNextDefaultNumber(existingTeams: Team[]): number {
+  public findNextDefaultNumber(existingTeams: Team[]): number {
     const used = new Set<number>();
     for (const team of existingTeams) {
       const trimmed = team.name.trim();
@@ -91,11 +100,16 @@ class ApiService {
     const fromBackend = await this.tryBackend<TeamListResponse>(`/teams${search ? `?search=${encodeURIComponent(search)}` : ''}`);
     if (fromBackend) {
       for (const t of fromBackend.teams) {
-        if (!t.members || t.members.length === 0) {
-          const list: string[] = [];
-          if (t.member1?.trim()) list.push(t.member1.trim());
-          if (t.member2?.trim()) list.push(t.member2.trim());
-          t.members = list;
+        if (!t.memberDetails || t.memberDetails.length === 0) {
+          const details: MemberItem[] = [];
+          if (t.members && t.members.length > 0) {
+            t.members.forEach((m) => details.push({ name: m, stk: '' }));
+          } else {
+            if (t.member1?.trim()) details.push({ name: t.member1.trim(), stk: '' });
+            if (t.member2?.trim()) details.push({ name: t.member2.trim(), stk: '' });
+          }
+          t.memberDetails = details;
+          t.members = details.map((d) => d.name);
         }
       }
       return fromBackend;
@@ -107,6 +121,7 @@ class ApiService {
       res.teams = res.teams.filter(
         (t) =>
           t.name.toLowerCase().includes(q) ||
+          (t.memberDetails && t.memberDetails.some((m) => m.name.toLowerCase().includes(q) || (m.stk && m.stk.includes(q)))) ||
           (t.members && t.members.some((m) => m.toLowerCase().includes(q))) ||
           t.member1.toLowerCase().includes(q) ||
           t.member2.toLowerCase().includes(q)
@@ -128,15 +143,18 @@ class ApiService {
     let customName = false;
 
     if (finalName) {
+      // Nếu tên người dùng nhập khác với dạng "Đội n"
       customName = true;
     } else {
       const nextNum = this.findNextDefaultNumber(current.teams);
       finalName = `Đội ${nextNum}`;
     }
 
-    const members: string[] = dto.members && dto.members.length > 0
-      ? dto.members.map((m) => m.trim()).filter(Boolean)
-      : [dto.member1?.trim() || '', dto.member2?.trim() || ''].filter(Boolean);
+    const memberDetails: MemberItem[] = dto.memberDetails && dto.memberDetails.length > 0
+      ? dto.memberDetails.filter((m) => m.name.trim().length > 0)
+      : (dto.members || []).map((m) => ({ name: m.trim(), stk: '' })).filter((m) => m.name.length > 0);
+
+    const members: string[] = memberDetails.map((m) => m.name);
 
     const now = Date.now();
     const id = 'team_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
@@ -146,6 +164,7 @@ class ApiService {
       member1: members[0] || '',
       member2: members[1] || '',
       members,
+      memberDetails,
       customName,
       createdAt: now,
       updatedAt: now,
@@ -182,21 +201,24 @@ class ApiService {
       }
     }
 
-    let updatedMembers = currentTeam.members || [];
-    if (dto.members !== undefined) {
-      updatedMembers = dto.members.map((m) => m.trim()).filter(Boolean);
+    let memberDetails: MemberItem[] = [];
+    if (dto.memberDetails !== undefined) {
+      memberDetails = dto.memberDetails.filter((m) => m.name.trim().length > 0);
+    } else if (dto.members !== undefined) {
+      memberDetails = dto.members.map((m) => ({ name: m.trim(), stk: '' })).filter((m) => m.name.length > 0);
     } else {
-      const m1 = dto.member1 !== undefined ? dto.member1.trim() : currentTeam.member1;
-      const m2 = dto.member2 !== undefined ? dto.member2.trim() : currentTeam.member2;
-      updatedMembers = [m1, m2].filter(Boolean);
+      memberDetails = currentTeam.memberDetails || [];
     }
+
+    const members = memberDetails.map((m) => m.name);
 
     const updatedTeam: Team = {
       ...currentTeam,
       name: updatedName,
-      member1: updatedMembers[0] || '',
-      member2: updatedMembers[1] || '',
-      members: updatedMembers,
+      member1: members[0] || '',
+      member2: members[1] || '',
+      members,
+      memberDetails,
       customName,
       updatedAt: Date.now(),
     };

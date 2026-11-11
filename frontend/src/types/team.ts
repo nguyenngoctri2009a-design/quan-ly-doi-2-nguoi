@@ -1,9 +1,15 @@
+export interface MemberItem {
+  name: string;
+  stk?: string; // STK gồm tối đa 6 số
+}
+
 export interface Team {
   id: string;
   name: string;
   member1: string;
   member2: string;
   members?: string[];
+  memberDetails?: MemberItem[]; // Danh sách thành viên kèm STK 6 số
   customName: boolean;
   createdAt: number;
   updatedAt: number;
@@ -14,6 +20,7 @@ export interface CreateTeamDto {
   member1?: string;
   member2?: string;
   members?: string[];
+  memberDetails?: MemberItem[];
 }
 
 export interface UpdateTeamDto {
@@ -21,6 +28,7 @@ export interface UpdateTeamDto {
   member1?: string;
   member2?: string;
   members?: string[];
+  memberDetails?: MemberItem[];
 }
 
 export interface TeamListResponse {

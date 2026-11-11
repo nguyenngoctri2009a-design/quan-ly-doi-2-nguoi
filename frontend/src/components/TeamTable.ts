@@ -24,7 +24,7 @@ export function renderTeamTable(
           ${searchQuery ? `Không tìm thấy kết quả cho "${searchQuery}"` : 'Chưa có đội nào trong giải đấu'}
         </div>
         <div class="empty-desc">
-          ${searchQuery ? 'Hãy thử tìm kiếm với từ khóa khác.' : 'Bấm sang tab "➕ Tạo Đội Mới" để đăng ký đội đầu tiên.'}
+          ${searchQuery ? 'Hãy thử tìm kiếm với từ khóa khác.' : 'Bấm sang tab "➕ Tạo Đội Mới" để tạo Đội 1, Đội 2...'}
         </div>
       </div>
     `;
@@ -53,32 +53,37 @@ export function renderTeamTable(
         ? `<span class="t1-pill t1-pill-warning" style="margin-left: 8px; font-size: 10.5px;">Tự đặt</span>`
         : `<span class="t1-pill t1-pill-cyan" style="margin-left: 8px; font-size: 10.5px;">Mặc định</span>`;
 
-      // Danh sách thành viên động (1, 2, 3, 4, 5, 10...)
-      const members = (team.members && team.members.length > 0)
-        ? team.members
-        : [team.member1, team.member2].filter(Boolean);
+      // Danh sách thành viên kèm STK 6 số
+      const memberDetails = (team.memberDetails && team.memberDetails.length > 0)
+        ? team.memberDetails
+        : (team.members || [team.member1, team.member2].filter(Boolean)).map((m) => ({ name: m, stk: '' }));
 
-      const memberChips = members.map((m, mIdx) => {
-        const firstChar = m.trim().charAt(0).toUpperCase();
+      const memberChips = memberDetails.map((m, mIdx) => {
+        const firstChar = m.name.trim().charAt(0).toUpperCase();
+        const stkBadge = m.stk?.trim()
+          ? `<span class="stk-pill" title="Số tài khoản / STK: ${m.stk}">STK: ${m.stk}</span>`
+          : '';
+
         return `
           <div class="member-chip" style="margin: 2px 4px 2px 0;">
-            <div class="avatar-circle avatar-active" style="font-size: 10px; width: 20px; height: 20px;">
+            <div class="avatar-circle avatar-active">
               ${firstChar || (mIdx + 1)}
             </div>
-            <span style="font-weight: 700;">${m.trim()}</span>
+            <span style="font-weight: 700;">${m.name.trim()}</span>
+            ${stkBadge}
           </div>
         `;
       }).join('');
 
       // Nút thêm nhanh người vào đội
       const quickAddBtn = `
-        <button class="btn-quick-add-member btn-edit-team" data-id="${team.id}" style="margin: 2px 0; padding: 4px 10px; font-size: 11.5px;">
+        <button class="btn-quick-add-member btn-edit-team" data-id="${team.id}" style="margin: 2px 0;" title="Thêm/sửa thành viên & STK">
           <span>＋</span> <span>Thêm người</span>
         </button>
       `;
 
       // Status pill
-      const memberCount = members.length;
+      const memberCount = memberDetails.length;
       let statusPill = '';
       if (targetCapacity > 0) {
         if (memberCount >= targetCapacity) {
@@ -93,14 +98,14 @@ export function renderTeamTable(
       return `
         <tr data-team-id="${team.id}">
           <td style="width: 50px; text-align: center; font-size: 16px;">${rankBadge}</td>
-          <td style="min-width: 160px;">
+          <td style="min-width: 150px;">
             <div style="display: flex; align-items: center;">
               <strong style="color: var(--t1-text); font-size: 14.5px;">${team.name}</strong>
               ${customBadge}
             </div>
             <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">ID: ${team.id.substring(0, 8)}...</div>
           </td>
-          <td style="min-width: 280px;">
+          <td style="min-width: 320px;">
             <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px;">
               ${memberChips}
               ${quickAddBtn}
@@ -112,7 +117,7 @@ export function renderTeamTable(
               class="t1-btn t1-btn-gold btn-edit-team"
               data-id="${team.id}"
               style="padding: 6px 12px; font-size: 12px; margin-right: 6px;"
-              title="Chỉnh sửa đội"
+              title="Chỉnh sửa đội & thành viên"
             >
               ✏️ Sửa
             </button>
@@ -138,7 +143,7 @@ export function renderTeamTable(
           <tr>
             <th style="width: 50px; text-align: center;">STT</th>
             <th>TÊN ĐỘI</th>
-            <th>DANH SÁCH THÀNH VIÊN</th>
+            <th>DANH SÁCH THÀNH VIÊN & STK (6 SỐ)</th>
             <th>TRẠNG THÁI</th>
             <th style="text-align: right;">THAO TÁC</th>
           </tr>

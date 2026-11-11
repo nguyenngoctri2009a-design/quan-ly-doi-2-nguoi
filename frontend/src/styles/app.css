@@ -2,7 +2,7 @@
 .app-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 32px 20px 60px 20px;
+  padding: 28px 20px 60px 20px;
 }
 
 /* Header */
@@ -10,7 +10,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   flex-wrap: wrap;
   gap: 16px;
 }
@@ -54,7 +54,7 @@
 }
 
 /* ==========================================================================
-   T1 TAB NAVIGATION (HỆ THỐNG TAB RIÊNG BIỆT)
+   T1 TAB NAVIGATION (3 TAB RIÊNG BIỆT)
    ========================================================================== */
 .t1-tabs-nav {
   display: flex;
@@ -67,6 +67,7 @@
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
   margin-bottom: 24px;
   width: fit-content;
+  flex-wrap: wrap;
 }
 
 .t1-tab-btn {
@@ -135,7 +136,7 @@
   padding-left: 42px !important;
 }
 
-/* Dynamic Member Inputs (Ấn cộng là hiện ô nhập) */
+/* Dynamic Member Row With STK Input (Cứ ấn cộng là hiện ô nhập tên + STK) */
 .member-inputs-container {
   display: flex;
   flex-direction: column;
@@ -162,8 +163,8 @@
 }
 
 .member-input-badge {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 38px;
   border-radius: 10px;
   background: #f0f9ff;
   border: 1px solid #bae6fd;
@@ -171,14 +172,31 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 850;
   flex-shrink: 0;
 }
 
+.member-name-flex {
+  flex: 2;
+  min-width: 140px;
+}
+
+.member-stk-flex {
+  flex: 1;
+  max-width: 140px;
+  min-width: 100px;
+}
+
+.stk-input {
+  letter-spacing: 1px;
+  font-family: monospace;
+  font-weight: 750;
+}
+
 .btn-remove-member {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
   border: 1.5px solid #fee2e2;
   background: #fff;
@@ -221,26 +239,36 @@
 .member-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   background: #f1f5f9;
-  padding: 5px 12px;
+  padding: 4px 10px;
   border-radius: 10px;
   border: 1px solid #e2e8f0;
   font-weight: 700;
-  font-size: 12.5px;
+  font-size: 12px;
   color: #1e293b;
+}
+
+.stk-pill {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-family: monospace;
+  font-weight: 800;
 }
 
 .btn-quick-add-member {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
+  gap: 5px;
+  padding: 4px 10px;
   border-radius: 10px;
   border: 1.5px dashed #0284c7;
   background: #f0f9ff;
   color: #0369a1;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 850;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -251,14 +279,14 @@
 }
 
 .avatar-circle {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   background: #cbd5e1;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   color: #475569;
 }
@@ -306,4 +334,19 @@
 @keyframes skeletonPulse {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+/* Card Quản Lý Đội ở Tab 3 */
+.team-manage-card {
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  margin-bottom: 20px;
+  transition: all 0.2s ease;
+}
+.team-manage-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
 }
