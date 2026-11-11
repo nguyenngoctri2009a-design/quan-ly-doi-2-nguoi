@@ -794,8 +794,6 @@ class TeamApp {
   }
 
   private bindWaveEvents(): void {
-    if (!this.tournamentState.isActive) return;
-
     // Tích tất cả V
     document.getElementById('btn-tick-all-v')?.addEventListener('click', async () => {
       if (!this.waveState) {
@@ -915,8 +913,6 @@ class TeamApp {
   }
 
   private bindWaveRowButtons(): void {
-    if (!this.tournamentState.isActive) return;
-
     // Nút toggle V
     const vButtons = document.querySelectorAll('.btn-toggle-v');
     vButtons.forEach((btn) => {
@@ -1306,6 +1302,8 @@ class TeamApp {
     });
 
     this.bindTableButtons();
+    this.bindWaveEvents();
+    this.bindWaveRowButtons();
   }
 
   private bindManageTabEvents(): void {

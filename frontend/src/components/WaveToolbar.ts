@@ -3,12 +3,8 @@ import type { WaveAttendanceState } from '../types/team';
 export function renderWaveToolbar(
   waveState: WaveAttendanceState | null,
   activeTeamsCount: number,
-  isTournamentActive: boolean
+  _isTournamentActive: boolean = true
 ): string {
-  if (!isTournamentActive) {
-    return '';
-  }
-
   const currentWave = waveState ? waveState.currentWave : 1;
   const statusMap = waveState?.teamStatus || {};
   let vCount = 0;

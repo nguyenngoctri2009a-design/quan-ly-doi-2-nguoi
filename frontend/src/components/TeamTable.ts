@@ -6,7 +6,7 @@ export function renderTeamTable(
   searchQuery: string,
   mode: TournamentMode = '2v2',
   waveAttendance: WaveAttendanceState | null = null,
-  isTournamentActive: boolean = false
+  _isTournamentActive: boolean = true
 ): string {
   if (isLoading) {
     return `
@@ -85,42 +85,35 @@ export function renderTeamTable(
         </button>
       `;
 
-      // Điểm danh V / X theo đợt
+      // Điểm danh V / X theo đợt (Luôn hiển thị nút để quản lý tích nhanh)
       const currentStatus = waveAttendance?.teamStatus?.[team.id] || 'none';
       const isV = currentStatus === 'V';
       const isX = currentStatus === 'X';
 
-      let attendanceCell = '';
-      if (isTournamentActive) {
-        attendanceCell = `
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <button
-              type="button"
-              class="t1-btn btn-toggle-v ${isV ? 't1-btn-success' : 't1-btn-secondary'}"
-              data-team-id="${team.id}"
-              data-current-val="${currentStatus}"
-              style="padding: 6px 14px; font-size: 13px; font-weight: 950; min-width: 58px; ${isV ? 'box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);' : 'opacity: 0.75;'}"
-              title="Tích V: Đủ điều kiện, tiếp tục vào Đợt ${currentWave + 1}"
-            >
-              <span>${isV ? '✓ V' : 'V'}</span>
-            </button>
-            <button
-              type="button"
-              class="t1-btn btn-toggle-x ${isX ? 't1-btn-danger' : 't1-btn-secondary'}"
-              data-team-id="${team.id}"
-              data-current-val="${currentStatus}"
-              style="padding: 6px 14px; font-size: 13px; font-weight: 950; min-width: 58px; ${isX ? 'box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);' : 'opacity: 0.75;'}"
-              title="Tích X: Bị loại khi hoàn tất Đợt ${currentWave}"
-            >
-              <span>${isX ? '✕ X' : 'X'}</span>
-            </button>
-          </div>
-        `;
-      } else {
-        attendanceCell = `
-          <span style="font-size: 12px; color: #94a3b8; font-weight: 600;">(Chờ bắt đầu giải)</span>
-        `;
-      }
+      const attendanceCell = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button
+            type="button"
+            class="t1-btn btn-toggle-v ${isV ? 't1-btn-success' : 't1-btn-secondary'}"
+            data-team-id="${team.id}"
+            data-current-val="${currentStatus}"
+            style="padding: 6px 14px; font-size: 13px; font-weight: 950; min-width: 58px; ${isV ? 'box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);' : 'opacity: 0.85;'}"
+            title="Tích V: Đủ điều kiện, tiếp tục vào Đợt ${currentWave + 1}"
+          >
+            <span>${isV ? '✓ V' : 'V'}</span>
+          </button>
+          <button
+            type="button"
+            class="t1-btn btn-toggle-x ${isX ? 't1-btn-danger' : 't1-btn-secondary'}"
+            data-team-id="${team.id}"
+            data-current-val="${currentStatus}"
+            style="padding: 6px 14px; font-size: 13px; font-weight: 950; min-width: 58px; ${isX ? 'box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);' : 'opacity: 0.85;'}"
+            title="Tích X: Bị loại khi hoàn tất Đợt ${currentWave}"
+          >
+            <span>${isX ? '✕ X' : 'X'}</span>
+          </button>
+        </div>
+      `;
 
       // Nhãn trạng thái hiển thị
       let statusPill = '';
