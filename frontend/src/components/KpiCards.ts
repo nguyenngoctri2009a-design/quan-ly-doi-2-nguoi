@@ -3,10 +3,14 @@ export interface KpiData {
   totalMembers: number;
   fullTeams: number;
   targetPerTeam: number;
+  advancedTeams?: number;
+  currentRoundName?: string;
 }
 
 export function renderKpiCards(data: KpiData): string {
-  const targetLabel = data.targetPerTeam > 0 ? `ĐỘI ĐỦ ${data.targetPerTeam} NGƯỜI` : 'ĐỘI ĐÃ CÓ THÀNH VIÊN';
+  const roundDisplay = data.currentRoundName || 'Chờ Khởi Đấu';
+  const advancedCount = data.advancedTeams !== undefined ? data.advancedTeams : data.fullTeams;
+  const advancedLabel = data.advancedTeams !== undefined ? 'ĐÃ VÀO VÒNG TRONG' : (data.targetPerTeam > 0 ? `ĐỘI ĐỦ ${data.targetPerTeam} NGƯỜI` : 'ĐỘI ĐỦ NGƯỜI');
 
   return `
     <div class="kpi-grid">
@@ -21,20 +25,22 @@ export function renderKpiCards(data: KpiData): string {
 
       <div class="t1-kpi-card">
         <div class="t1-kpi-title">
-          <span>👥</span>
-          <span>TỔNG SỐ TUYỂN THỦ</span>
+          <span>🔥</span>
+          <span>${advancedLabel}</span>
         </div>
-        <div class="t1-kpi-number" id="kpi-total-members" style="color: var(--t1-primary);">${data.totalMembers}</div>
-        <div class="t1-kpi-sub">Tổng người chơi trong giải</div>
+        <div class="t1-kpi-number" id="kpi-total-members" style="color: var(--t1-success);">${advancedCount}</div>
+        <div class="t1-kpi-sub">${data.advancedTeams !== undefined ? 'Đội xuất sắc qua vòng' : 'Sẵn sàng thi đấu'}</div>
       </div>
 
       <div class="t1-kpi-card">
         <div class="t1-kpi-title">
-          <span>⚡</span>
-          <span>${targetLabel}</span>
+          <span>⚔️</span>
+          <span>GIAI ĐOẠN GIẢI</span>
         </div>
-        <div class="t1-kpi-number" id="kpi-full-teams" style="color: var(--t1-success);">${data.fullTeams}</div>
-        <div class="t1-kpi-sub">Sẵn sàng xuất trận</div>
+        <div class="t1-kpi-number" id="kpi-full-teams" style="color: var(--t1-primary); font-size: 20px; line-height: 1.3; font-weight: 900; margin-top: 4px;">
+          ${roundDisplay}
+        </div>
+        <div class="t1-kpi-sub">Tiến độ loại trực tiếp</div>
       </div>
     </div>
   `;

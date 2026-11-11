@@ -5,6 +5,33 @@ export interface TournamentState {
   endedAt?: number;
 }
 
+export interface MatchItem {
+  id: string;
+  roundIndex: number;
+  team1Id: string;
+  team2Id?: string; // Có thể để trống nếu bye (đặc cách vào vòng trong)
+  team1Name: string;
+  team2Name?: string;
+  winnerId?: string;
+  winnerName?: string;
+  isBye?: boolean; // Được đặc cách vào thẳng vòng trong
+  completed: boolean;
+}
+
+export interface RoundItem {
+  roundIndex: number;
+  name: string; // VD: "Vòng 1 (Vòng Loại)", "Tứ Kết", "Bán Kết", "Chung Kết"
+  matches: MatchItem[];
+}
+
+export interface BracketState {
+  currentRoundIndex: number;
+  rounds: RoundItem[];
+  championId?: string;
+  championName?: string;
+  updatedAt?: number;
+}
+
 export interface MemberItem {
   name: string;
   stk?: string; // STK gồm tối đa 6 số

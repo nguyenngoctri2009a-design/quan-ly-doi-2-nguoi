@@ -1,4 +1,4 @@
-import type { ApiResponse, CreateTeamDto, MemberItem, Team, TeamListResponse, TournamentState, UpdateTeamDto } from '../types/team';
+import type { ApiResponse, BracketState, CreateTeamDto, MemberItem, Team, TeamListResponse, TournamentState, UpdateTeamDto } from '../types/team';
 
 const FIREBASE_RTDB_URL = 'https://mechamay-7cbce-default-rtdb.asia-southeast1.firebasedatabase.app';
 const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + '/api';
@@ -61,6 +61,29 @@ class ApiService {
       body: JSON.stringify(state),
     });
     if (!res.ok) throw new Error('Không thể cập nhật trạng thái giải đấu lên Firebase');
+  }
+
+  // --- TRẠNG THÁI VÒNG ĐẤU & VÀO VÒNG TRONG (BRACKET) ---
+  public async getBracketState(): Promise<BracketState | null> {
+    try {
+      const res = await fetch(`${FIREBASE_RTDB_URL}/bracketState.json`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data) return data as BracketState;
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc bracketState từ Firebase:', e);
+    }
+    return null;
+  }
+
+  public async setBracketState(state: BracketState | null): Promise<void> {
+    const res = await fetch(`${FIREBASE_RTDB_URL}/bracketState.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state),
+    });
+    if (!res.ok) throw new Error('Không thể lưu trạng thái vòng đấu lên Firebase');
   }
 
   // --- TRỰC TIẾP FIREBASE REALTIME DATABASE CHO TEAMS ---

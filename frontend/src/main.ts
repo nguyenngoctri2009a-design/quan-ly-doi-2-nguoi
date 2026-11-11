@@ -1,12 +1,13 @@
 import { apiService } from './services/api';
 import { realtimeSSE } from './services/sse';
-import type { CreateTeamDto, MemberItem, Team, TournamentMode, TournamentState, UpdateTeamDto } from './types/team';
+import type { BracketState, CreateTeamDto, MemberItem, Team, TournamentMode, TournamentState, UpdateTeamDto } from './types/team';
 import { renderKpiCards, type KpiData } from './components/KpiCards';
 import { renderTeamTable } from './components/TeamTable';
 import { TeamModal } from './components/TeamModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { PinModal } from './components/PinModal';
 import { Toast } from './components/Toast';
+import { advanceToNextRound, generateInitialBracket, renderBracketSection } from './components/BracketSection';
 
 type ActiveTab = 'list' | 'create' | 'manage';
 
@@ -19,6 +20,7 @@ class TeamApp {
   private currentTab: ActiveTab = 'list';
   private tournamentMode: TournamentMode = '3v3';
   private tournamentState: TournamentState = { isActive: false, mode: '3v3' };
+  private bracketState: BracketState | null = null;
   private searchDebounceTimer: number | null = null;
 
   private teamModal!: TeamModal;
@@ -37,8 +39,9 @@ class TeamApp {
     this.renderSkeleton();
     this.setupSSE();
 
-    // Tải trạng thái giải đấu đã lưu trước đó
+    // Tải trạng thái giải đấu & sơ đồ vòng đấu đã lưu trước đó
     await this.fetchTournamentState();
+    this.bracketState = await apiService.getBracketState();
     await this.fetchTeams();
   }
 
@@ -133,7 +136,21 @@ class TeamApp {
       }
     }
 
-    return { totalTeams, totalMembers, fullTeams, targetPerTeam: target };
+    let advancedTeams = 0;
+    let currentRoundName = 'Chưa Chia Cặp';
+
+    if (this.bracketState && this.bracketState.rounds.length > 0) {
+      const currentRound = this.bracketState.rounds.find((r) => r.roundIndex === this.bracketState!.currentRoundIndex);
+      if (currentRound) {
+        currentRoundName = currentRound.name;
+        advancedTeams = currentRound.matches.filter((m) => m.completed && m.winnerId).length;
+      }
+      if (this.bracketState.championName) {
+        currentRoundName = `👑 ${this.bracketState.championName} Vô Địch`;
+      }
+    }
+
+    return { totalTeams, totalMembers, fullTeams, targetPerTeam: target, advancedTeams, currentRoundName };
   }
 
   private renderSkeleton(): void {
@@ -169,8 +186,8 @@ class TeamApp {
           <!-- 3 Tabs Navigation -->
           <div class="t1-tabs-nav" style="margin-bottom: 0;">
             <button class="t1-tab-btn ${this.currentTab === 'list' ? 'active' : ''}" id="tab-nav-list">
-              <span>📋</span>
-              <span>Tab 1: Danh Sách & Bảng Điểm</span>
+              <span>⚔️</span>
+              <span>Tab 1: Sơ Đồ Thi Đấu & Vào Vòng Trong</span>
             </button>
             <button class="t1-tab-btn ${this.currentTab === 'create' ? 'active' : ''}" id="tab-nav-create">
               <span>➕</span>
@@ -197,10 +214,14 @@ class TeamApp {
           </div>
         </div>
 
-        <!-- TAB 1: DANH SÁCH ĐỘI & KPI -->
+        <!-- TAB 1: SƠ ĐỒ VÒNG ĐẤU, TIẾN VÀO VÒNG TRONG & DANH SÁCH -->
         <div id="tab-content-list" style="display: ${this.currentTab === 'list' ? 'block' : 'none'};">
           <div id="kpi-section">
             ${renderKpiCards(kpi)}
+          </div>
+
+          <div id="bracket-section">
+            ${renderBracketSection(this.bracketState, this.teams, isActive)}
           </div>
 
           <div class="t1-card toolbar-card">
@@ -220,7 +241,7 @@ class TeamApp {
           </div>
 
           <div id="table-container">
-            ${renderTeamTable(this.teams, this.isLoading, this.searchQuery, this.tournamentMode)}
+            ${renderTeamTable(this.teams, this.isLoading, this.searchQuery, this.tournamentMode, this.bracketState)}
           </div>
         </div>
 
@@ -708,6 +729,12 @@ class TeamApp {
       kpiSection.innerHTML = renderKpiCards(this.calculateKpi());
     }
 
+    const bracketSection = document.getElementById('bracket-section');
+    if (bracketSection) {
+      bracketSection.innerHTML = renderBracketSection(this.bracketState, this.teams, this.tournamentState.isActive);
+      this.bindBracketEvents();
+    }
+
     const counterSummary = document.getElementById('counter-summary');
     if (counterSummary) {
       counterSummary.innerHTML = `Hiển thị: <strong>${this.filteredTeams().length}</strong> đội`;
@@ -715,7 +742,7 @@ class TeamApp {
 
     const tableContainer = document.getElementById('table-container');
     if (tableContainer) {
-      tableContainer.innerHTML = renderTeamTable(this.filteredTeams(), this.isLoading, this.searchQuery, this.tournamentMode);
+      tableContainer.innerHTML = renderTeamTable(this.filteredTeams(), this.isLoading, this.searchQuery, this.tournamentMode, this.bracketState);
       this.bindTableButtons();
     }
 
@@ -729,6 +756,102 @@ class TeamApp {
     if (this.currentTab === 'manage') {
       this.updateManageTab();
     }
+  }
+
+  private bindBracketEvents(): void {
+    // Nút bốc thăm vòng 1
+    document.getElementById('btn-generate-bracket')?.addEventListener('click', async () => {
+      try {
+        this.bracketState = generateInitialBracket(this.teams);
+        await apiService.setBracketState(this.bracketState);
+        Toast.success('🎲 ĐÃ BỐC THĂM GHÉP CẶP VÒNG 1 THÀNH CÔNG!');
+        this.updateUI();
+      } catch (err) {
+        Toast.error(err instanceof Error ? err.message : String(err));
+      }
+    });
+
+    // Nút chọn đội thắng (tiến vào vòng trong)
+    const pickWinnerBtns = document.querySelectorAll('.btn-pick-winner');
+    pickWinnerBtns.forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const matchId = btn.getAttribute('data-match-id');
+        const winnerId = btn.getAttribute('data-winner-id');
+        const winnerName = btn.getAttribute('data-winner-name');
+
+        if (!this.bracketState || !matchId || !winnerId || !winnerName) return;
+
+        for (const round of this.bracketState.rounds) {
+          const match = round.matches.find((m) => m.id === matchId);
+          if (match) {
+            match.winnerId = winnerId;
+            match.winnerName = winnerName;
+            match.completed = true;
+            break;
+          }
+        }
+
+        // Tự động kiểm tra nếu đây là trận chung kết
+        const currentRound = this.bracketState.rounds.find((r) => r.roundIndex === this.bracketState!.currentRoundIndex);
+        if (currentRound && currentRound.matches.length === 1 && currentRound.matches[0].completed) {
+          this.bracketState.championId = winnerId;
+          this.bracketState.championName = winnerName;
+        }
+
+        await apiService.setBracketState(this.bracketState);
+        Toast.success(`🏆 "${winnerName}" ĐÃ CHIẾN THẮNG VÀ TIẾN VÀO VÒNG TRONG!`);
+        this.updateUI();
+      });
+    });
+
+    // Nút chọn lại kết quả trận đấu
+    const resetMatchBtns = document.querySelectorAll('.btn-reset-match');
+    resetMatchBtns.forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const matchId = btn.getAttribute('data-match-id');
+        if (!this.bracketState || !matchId) return;
+
+        for (const round of this.bracketState.rounds) {
+          const match = round.matches.find((m) => m.id === matchId);
+          if (match && !match.isBye) {
+            match.winnerId = undefined;
+            match.winnerName = undefined;
+            match.completed = false;
+            break;
+          }
+        }
+
+        this.bracketState.championId = undefined;
+        this.bracketState.championName = undefined;
+
+        await apiService.setBracketState(this.bracketState);
+        Toast.info('Đã hủy kết quả trận đấu để chọn lại.');
+        this.updateUI();
+      });
+    });
+
+    // Nút bắt đầu vòng tiếp theo
+    document.getElementById('btn-advance-round')?.addEventListener('click', async () => {
+      if (!this.bracketState) return;
+      try {
+        this.bracketState = advanceToNextRound(this.bracketState);
+        await apiService.setBracketState(this.bracketState);
+        Toast.success('🚀 ĐÃ BẮT ĐẦU VÒNG ĐẤU TIẾP THEO CHO CÁC ĐỘI VÀO VÒNG TRONG!');
+        this.updateUI();
+      } catch (err) {
+        Toast.error(err instanceof Error ? err.message : String(err));
+      }
+    });
+
+    // Nút bốc thăm lại từ đầu
+    document.getElementById('btn-reset-bracket')?.addEventListener('click', () => {
+      this.confirmModal.open('toàn bộ sơ đồ thi đấu để bốc thăm lại', async () => {
+        this.bracketState = null;
+        await apiService.setBracketState(null);
+        Toast.info('Đã xóa sơ đồ thi đấu cũ. Bây giờ bạn có thể bốc thăm lại.');
+        this.updateUI();
+      });
+    });
   }
 
   private updateManageTab(): void {
@@ -813,6 +936,7 @@ class TeamApp {
   private bindDOMEvents(): void {
     this.bindBannerEvents();
     this.bindCreateTabEvents();
+    this.bindBracketEvents();
 
     // 3 Tabs
     document.getElementById('tab-nav-list')?.addEventListener('click', () => this.switchTab('list'));
