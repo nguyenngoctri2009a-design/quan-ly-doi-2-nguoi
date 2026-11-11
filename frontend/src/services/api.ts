@@ -1,64 +1,198 @@
 import type { ApiResponse, CreateTeamDto, Team, TeamListResponse, UpdateTeamDto } from '../types/team';
 
+const FIREBASE_RTDB_URL = 'https://mechamay-7cbce-default-rtdb.asia-southeast1.firebasedatabase.app';
 const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + '/api';
 
 class ApiService {
-  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = `${API_BASE}${endpoint}`;
-    const headers = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
+  private useDirectFirebase = false;
 
-    let response: Response;
+  private async tryBackend<T>(endpoint: string, options: RequestInit = {}): Promise<T | null> {
+    if (this.useDirectFirebase) return null;
+
     try {
-      response = await fetch(url, { ...options, headers });
+      const url = `${API_BASE}${endpoint}`;
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
+
+      if (response.status === 404) {
+        // Backend không tồn tại trên host này (ví dụ Vercel static), kích hoạt fallback Firebase
+        console.warn('Backend API trả về 404, tự động chuyển sang chế độ Firebase Realtime Direct...');
+        this.useDirectFirebase = true;
+        return null;
+      }
+
+      if (!response.ok) {
+        const json = await response.json().catch(() => null);
+        throw new Error(json?.error?.message || json?.message || `Lỗi HTTP ${response.status}`);
+      }
+
+      const json: ApiResponse<T> = await response.json();
+      return json.data as T;
     } catch (err) {
-      throw new Error(`Lỗi kết nối máy chủ: ${err instanceof Error ? err.message : String(err)}`);
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        // Không thể kết nối tới backend
+        this.useDirectFirebase = true;
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  // --- TRỰC TIẾP FIREBASE REALTIME DATABASE ---
+  private async firebaseGetTeams(): Promise<TeamListResponse> {
+    const res = await fetch(`${FIREBASE_RTDB_URL}/teams.json`);
+    if (!res.ok) throw new Error(`Lỗi Firebase: HTTP ${res.status}`);
+    const data: Record<string, Team> | null = await res.json();
+
+    const teams: Team[] = data ? Object.values(data) : [];
+    teams.sort((a, b) => a.createdAt - b.createdAt);
+
+    const totalTeams = teams.length;
+    let totalMembers = 0;
+    for (const t of teams) {
+      if (t.member1?.trim()) totalMembers++;
+      if (t.member2?.trim()) totalMembers++;
     }
 
-    let json: ApiResponse<T>;
-    try {
-      json = await response.json();
-    } catch {
-      throw new Error(`Máy chủ trả về phản hồi không hợp lệ (${response.status})`);
-    }
+    return { teams, totalTeams, totalMembers };
+  }
 
-    if (!response.ok || !json.success) {
-      const errorMessage = json.error?.message || json.message || `Lỗi yêu cầu HTTP ${response.status}`;
-      throw new Error(errorMessage);
+  private findNextDefaultNumber(existingTeams: Team[]): number {
+    const used = new Set<number>();
+    for (const team of existingTeams) {
+      const trimmed = team.name.trim();
+      if (trimmed.startsWith('Đội ')) {
+        const num = parseInt(trimmed.substring(4).trim(), 10);
+        if (!isNaN(num) && num > 0) used.add(num);
+      } else if (trimmed.startsWith('Doi ')) {
+        const num = parseInt(trimmed.substring(4).trim(), 10);
+        if (!isNaN(num) && num > 0) used.add(num);
+      }
     }
-
-    return json.data as T;
+    let candidate = 1;
+    while (used.has(candidate)) candidate++;
+    return candidate;
   }
 
   public async getTeams(search?: string): Promise<TeamListResponse> {
-    const query = search ? `?search=${encodeURIComponent(search.trim())}` : '';
-    return this.request<TeamListResponse>(`/teams${query}`);
+    const fromBackend = await this.tryBackend<TeamListResponse>(`/teams${search ? `?search=${encodeURIComponent(search)}` : ''}`);
+    if (fromBackend) return fromBackend;
+
+    const res = await this.firebaseGetTeams();
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      res.teams = res.teams.filter(
+        (t) =>
+          t.name.toLowerCase().includes(q) ||
+          t.member1.toLowerCase().includes(q) ||
+          t.member2.toLowerCase().includes(q)
+      );
+    }
+    return res;
   }
 
   public async createTeam(dto: CreateTeamDto): Promise<Team> {
-    return this.request<Team>('/teams', {
+    const fromBackend = await this.tryBackend<Team>('/teams', {
       method: 'POST',
       body: JSON.stringify(dto),
     });
+    if (fromBackend) return fromBackend;
+
+    // Firebase Direct mode
+    const current = await this.firebaseGetTeams();
+    let finalName = dto.name?.trim();
+    let customName = false;
+
+    if (finalName) {
+      customName = true;
+    } else {
+      const nextNum = this.findNextDefaultNumber(current.teams);
+      finalName = `Đội ${nextNum}`;
+    }
+
+    const now = Date.now();
+    const id = 'team_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
+    const newTeam: Team = {
+      id,
+      name: finalName,
+      member1: dto.member1?.trim() || '',
+      member2: dto.member2?.trim() || '',
+      customName,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const res = await fetch(`${FIREBASE_RTDB_URL}/teams/${id}.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newTeam),
+    });
+
+    if (!res.ok) throw new Error('Không thể lưu đội vào Firebase');
+    return newTeam;
   }
 
   public async updateTeam(id: string, dto: UpdateTeamDto): Promise<Team> {
-    return this.request<Team>(`/teams/${id}`, {
+    const fromBackend = await this.tryBackend<Team>(`/teams/${id}`, {
       method: 'PUT',
       body: JSON.stringify(dto),
     });
+    if (fromBackend) return fromBackend;
+
+    const getRes = await fetch(`${FIREBASE_RTDB_URL}/teams/${id}.json`);
+    const currentTeam: Team | null = await getRes.json();
+    if (!currentTeam) throw new Error('Không tìm thấy đội để cập nhật');
+
+    let updatedName = currentTeam.name;
+    let customName = currentTeam.customName;
+
+    if (dto.name !== undefined && dto.name.trim()) {
+      if (dto.name.trim() !== currentTeam.name) {
+        updatedName = dto.name.trim();
+        customName = true;
+      }
+    }
+
+    const updatedTeam: Team = {
+      ...currentTeam,
+      name: updatedName,
+      member1: dto.member1 !== undefined ? dto.member1.trim() : currentTeam.member1,
+      member2: dto.member2 !== undefined ? dto.member2.trim() : currentTeam.member2,
+      customName,
+      updatedAt: Date.now(),
+    };
+
+    const res = await fetch(`${FIREBASE_RTDB_URL}/teams/${id}.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedTeam),
+    });
+
+    if (!res.ok) throw new Error('Không thể cập nhật đội trên Firebase');
+    return updatedTeam;
   }
 
   public async deleteTeam(id: string): Promise<{ id: string }> {
-    return this.request<{ id: string }>(`/teams/${id}`, {
+    const fromBackend = await this.tryBackend<{ id: string }>(`/teams/${id}`, {
       method: 'DELETE',
     });
+    if (fromBackend) return fromBackend;
+
+    const res = await fetch(`${FIREBASE_RTDB_URL}/teams/${id}.json`, {
+      method: 'DELETE',
+    });
+
+    if (!res.ok) throw new Error('Không thể xóa đội trên Firebase');
+    return { id };
   }
 
-  public async checkHealth(): Promise<{ status: string; firebaseConnected: boolean }> {
-    return this.request<{ status: string; firebaseConnected: boolean }>('/health');
+  public isDirectMode(): boolean {
+    return this.useDirectFirebase;
   }
 }
 
