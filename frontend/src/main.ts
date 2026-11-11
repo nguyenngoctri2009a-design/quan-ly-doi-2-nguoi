@@ -212,6 +212,7 @@ class TeamApp {
   private renderCreateTabContent(): string {
     const isActive = this.tournamentState.isActive;
     const nextDefaultNum = apiService.findNextDefaultNumber(this.teams);
+    const capacity = this.getTargetCapacity();
 
     if (!isActive) {
       return `
@@ -230,16 +231,18 @@ class TeamApp {
       `;
     }
 
+    const modeTitle = capacity > 0 ? `Đang đấu thể thức ${this.tournamentMode.toUpperCase()} (Tự tạo sẵn ${capacity} ô nhập)` : 'Thể thức Tự Do';
+
     return `
       <div class="t1-card" style="max-width: 680px; margin: 0 auto; padding: 32px;">
         <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 8px;">
           <span style="font-size: 32px;">⚡</span>
           <div>
             <h2 style="margin: 0; font-size: 22px; font-weight: 900; color: var(--t1-text);">
-              Tạo Đội Mới (Giải Đấu Đang Mở)
+              Tạo Đội Mới (${this.tournamentMode.toUpperCase()})
             </h2>
             <div style="font-size: 13px; color: var(--t1-text-muted); font-weight: 600; margin-top: 2px;">
-              Hỗ trợ mọi số lượng người. Cứ ấn nút ＋ là hiện thêm ô nhập tên kèm STK (6 số).
+              ${modeTitle}. Có thể bấm nút ＋ để thêm bớt tùy ý.
             </div>
           </div>
         </div>
@@ -264,20 +267,20 @@ class TeamApp {
           <div class="form-group" style="margin-top: 24px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
               <label class="form-label" style="margin: 0;">
-                DANH SÁCH THÀNH VIÊN & Ô PHỤ STK (6 SỐ)
+                DANH SÁCH THÀNH VIÊN (${capacity > 0 ? `${capacity} người` : 'tự do'}) & Ô PHỤ STK (6 SỐ)
               </label>
               <div style="display: flex; gap: 8px;">
                 <button type="button" class="t1-btn t1-btn-primary" id="tab-btn-add-member" style="padding: 7px 16px; font-size: 12.5px;">
                   <span>＋ Thêm 1 Ô Nhập</span>
                 </button>
                 <button type="button" class="t1-btn t1-btn-gold" id="tab-btn-add-batch" style="padding: 7px 14px; font-size: 12.5px;" title="Thêm nhanh theo thể thức">
-                  <span>⚡ Thêm Nhanh ${this.getTargetCapacity() > 0 ? this.getTargetCapacity() : 3} Ô</span>
+                  <span>⚡ Thêm ${capacity > 0 ? capacity : 3} Ô</span>
                 </button>
               </div>
             </div>
 
             <div id="tab-member-inputs-container" class="member-inputs-container">
-              <!-- Cứ ấn nút cộng sẽ tự động hiện thêm ô nhập tên + STK 6 số tại đây -->
+              <!-- Tự động sinh đúng số ô theo thể thức tại đây -->
             </div>
           </div>
 
@@ -529,7 +532,6 @@ class TeamApp {
       const modeButtons = document.querySelectorAll('.btn-mode-toggle');
       modeButtons.forEach((b) => b.setAttribute('disabled', 'true'));
 
-      // Tự động chuyển ngay sang Tab 2 để nhập đội
       this.switchTab('create');
     } catch (err) {
       Toast.error(`Không thể bắt đầu: ${err instanceof Error ? err.message : String(err)}`);
@@ -555,15 +557,20 @@ class TeamApp {
       }
     });
 
-    const batchBtn = document.getElementById('tab-btn-add-batch');
-    if (batchBtn) {
-      const cap = this.getTargetCapacity();
-      batchBtn.innerHTML = `<span>⚡ Thêm Nhanh ${cap > 0 ? cap : 3} Ô</span>`;
-    }
-
     // Cập nhật lên Firebase
     await apiService.setTournamentState(this.tournamentState);
     this.updateTournamentBanner();
+
+    // Nếu đang ở Tab 2, tự động re-init lại đúng số ô theo thể thức vừa chọn
+    if (this.currentTab === 'create' && this.tournamentState.isActive) {
+      const createContent = document.getElementById('tab-content-create');
+      if (createContent) {
+        createContent.innerHTML = this.renderCreateTabContent();
+        this.bindCreateTabEvents();
+        this.initTabCreateForm();
+      }
+    }
+
     this.updateUI();
   }
 
@@ -584,11 +591,18 @@ class TeamApp {
     this.updateCreateTabHint();
   }
 
+  // Tự động tạo đúng số ô nhập theo thể thức (3v3 thì 3 ô, 4v4 thì 4 ô, 5v5 thì 5 ô, 10v10 thì 10 ô)
   private initTabCreateForm(): void {
     const container = document.getElementById('tab-member-inputs-container');
     if (!container) return;
     container.innerHTML = '';
-    this.addTabMemberField('', '');
+    
+    const count = this.getTargetCapacity();
+    const rowsToCreate = count > 0 ? count : 3;
+
+    for (let i = 0; i < rowsToCreate; i++) {
+      this.addTabMemberField('', '');
+    }
   }
 
   private addTabMemberField(valName = '', valStk = ''): void {
@@ -640,8 +654,6 @@ class TeamApp {
     });
 
     container.appendChild(row);
-    const input = row.querySelector('.tab-member-name-input') as HTMLInputElement;
-    input.focus();
   }
 
   private reindexTabMemberFields(): void {
@@ -709,12 +721,12 @@ class TeamApp {
   }
 
   private bindBannerEvents(): void {
-    // Nút Bắt Đầu Giải Đấu (ở banner)
+    // Nút Bắt Đầu Giải Đấu
     document.getElementById('btn-start-tournament')?.addEventListener('click', async () => {
       await this.startTournamentAction();
     });
 
-    // Nút Kết Thúc Giải Đấu (Mở mã PIN 2000)
+    // Nút Kết Thúc Giải Đấu (Mã PIN 2000)
     document.getElementById('btn-end-tournament')?.addEventListener('click', () => {
       this.pinModal.open(async () => {
         this.tournamentState = {
@@ -732,7 +744,7 @@ class TeamApp {
   }
 
   private bindCreateTabEvents(): void {
-    // Nút bắt đầu từ bên trong Tab 2 nếu đang bị khóa
+    // Nút bắt đầu từ bên trong Tab 2
     document.getElementById('btn-start-from-tab')?.addEventListener('click', async () => {
       await this.startTournamentAction();
     });
@@ -742,7 +754,7 @@ class TeamApp {
       this.addTabMemberField('', '');
     });
 
-    // Thêm nhanh
+    // Thêm nhanh theo thể thức
     document.getElementById('tab-btn-add-batch')?.addEventListener('click', () => {
       const cap = this.getTargetCapacity() > 0 ? this.getTargetCapacity() : 3;
       for (let i = 0; i < cap; i++) {
