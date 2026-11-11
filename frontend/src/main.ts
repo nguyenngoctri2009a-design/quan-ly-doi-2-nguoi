@@ -17,8 +17,8 @@ class TeamApp {
   private searchQuery = '';
   private isSseConnected = false;
   private currentTab: ActiveTab = 'list';
-  private tournamentMode: TournamentMode = '2v2';
-  private tournamentState: TournamentState = { isActive: false, mode: '2v2' };
+  private tournamentMode: TournamentMode = '3v3';
+  private tournamentState: TournamentState = { isActive: false, mode: '3v3' };
   private searchDebounceTimer: number | null = null;
 
   private teamModal!: TeamModal;
@@ -128,7 +128,7 @@ class TeamApp {
             </button>
             <button class="t1-tab-btn ${this.currentTab === 'create' ? 'active' : ''}" id="tab-nav-create">
               <span>➕</span>
-              <span>Tab 2: Tạo Đội Mới (Mặc Định Đội ${nextDefaultNum})</span>
+              <span>Tab 2: Tạo Đội Mới (Mặc Định: Đội ${nextDefaultNum})</span>
             </button>
             <button class="t1-tab-btn ${this.currentTab === 'manage' ? 'active' : ''}" id="tab-nav-manage">
               <span>⚙️</span>
@@ -188,7 +188,7 @@ class TeamApp {
                   Tạo Đội Mới (Tự Động Đếm Đội 1, Đội 2, Đội 3...)
                 </h2>
                 <div style="font-size: 13px; color: var(--t1-text-muted); font-weight: 600; margin-top: 2px;">
-                  Tên đội được gán sẵn mặc định tăng dần. Nhập tên thành viên và ô phụ STK (tối đa 6 số).
+                  Hỗ trợ mọi số lượng người (1, 2, 3, 5, 10...). Cứ ấn nút ＋ là hiện thêm ô nhập tên kèm STK.
                 </div>
               </div>
             </div>
@@ -322,7 +322,7 @@ class TeamApp {
         <div class="t1-card empty-state">
           <div class="empty-icon">📂</div>
           <div class="empty-title">Chưa có đội nào để chỉnh sửa</div>
-          <div class="empty-desc">Hãy sang Tab 2 để tạo Đội 1, Đội 2 trước.</div>
+          <div class="empty-desc">Hãy sang Tab 2 để tạo đội trước.</div>
         </div>
       `;
     }
@@ -470,7 +470,7 @@ class TeamApp {
     }
     const navBtn = document.getElementById('tab-nav-create');
     if (navBtn) {
-      navBtn.innerHTML = `<span>➕</span> <span>Tab 2: Tạo Đội Mới (Mặc Định Đội ${nextNum})</span>`;
+      navBtn.innerHTML = `<span>➕</span> <span>Tab 2: Tạo Đội Mới (Mặc Định: Đội ${nextNum})</span>`;
     }
   }
 
@@ -517,10 +517,8 @@ class TeamApp {
     const container = document.getElementById('tab-member-inputs-container');
     if (!container) return;
     container.innerHTML = '';
-    const initialCount = this.getTargetCapacity() > 0 ? this.getTargetCapacity() : 2;
-    for (let i = 0; i < Math.min(initialCount, 5); i++) {
-      this.addTabMemberField('', '');
-    }
+    // Mặc định sinh sẵn 1 ô đầu tiên, cứ bấm cộng là thêm
+    this.addTabMemberField('', '');
   }
 
   private addTabMemberField(valName = '', valStk = ''): void {
@@ -658,7 +656,6 @@ class TeamApp {
         await apiService.setTournamentState(this.tournamentState);
         Toast.success(`🔥 ĐÃ BẮT ĐẦU GIẢI ĐẤU THỂ THỨC ${this.tournamentMode.toUpperCase()}!`);
         this.updateTournamentBanner();
-        // Disable mode buttons
         const modeButtons = document.querySelectorAll('.btn-mode-toggle');
         modeButtons.forEach((b) => b.setAttribute('disabled', 'true'));
       } catch (err) {
@@ -677,7 +674,6 @@ class TeamApp {
         await apiService.setTournamentState(this.tournamentState);
         Toast.success('✅ ĐÃ KẾT THÚC GIẢI ĐẤU THÀNH CÔNG VỚI MÃ PIN 2000!');
         this.updateTournamentBanner();
-        // Re-enable mode buttons
         const modeButtons = document.querySelectorAll('.btn-mode-toggle');
         modeButtons.forEach((b) => b.removeAttribute('disabled'));
       });
