@@ -4,8 +4,91 @@ export function parseIgStkInput(text: string, existingMembers: IgStkMember[]): P
   if (!text.trim()) return [];
 
   const lines = text.split(/\r?\n/);
-  const results: ParsedIgStkItem[] = [];
-  const seenStksInInput = new Set<string>();
+  const rawPairs: { ig: string; stk: string; raw: string }[] = [];
+
+  let pendingIg = '';
+  let pendingRaw: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+
+    // Bỏ qua dòng kết thúc hoặc bình luận trò chuyện không liên quan
+    if (
+      trimmed.startsWith('ĐỊCH DANG') ||
+      trimmed.startsWith('Quản lý chiếm đóng') ||
+      trimmed.toLowerCase().startsWith('tước hiệu')
+    ) {
+      continue;
+    }
+
+    // Kiểm tra xem dòng có phải là Discord header (VD: BUA | Adam John [G5VN], — Hôm qua lúc 11:43 SA)
+    const isDiscordHeader = /—\s*(?:hôm\s*qua|hôm\s*nay|\d{1,2}:\d{2})/i.test(trimmed);
+    if (isDiscordHeader) {
+      pendingIg = '';
+      pendingRaw = [trimmed];
+      continue;
+    }
+
+    // Trường hợp 1: Dòng chứa CẢ IG và STK trên cùng 1 dòng
+    // VD: "ig ; Beo Blackk Stk 788221" hoặc "IG : Cao Namqb ... STK : 520502"
+    const sameLineMatch = trimmed.match(
+      /(?:ig|instagram|tên\s*ingame)[:\s\.\;\-]+(.+?)\s+(?:stk|skt|stk\s*ingame|số\s*tài\s*khoản)[:\s\.\;\-]*([0-9]{4,15})\b/i
+    );
+    if (sameLineMatch) {
+      const ig = sameLineMatch[1].replace(/^[:\-\s\.\;]+|[:\-\s\.\;,]+$/g, '').trim();
+      const stk = sameLineMatch[2].trim();
+      rawPairs.push({ ig, stk, raw: trimmed });
+      pendingIg = '';
+      pendingRaw = [];
+      continue;
+    }
+
+    // Trường hợp 2: Dòng chứa IG
+    // VD: "Ig: Adam John", "Ig Toxi Zach", "IG Truongg loic", "Tên ingame : Minkey Dote"
+    const igLineMatch = trimmed.match(/^(?:ig|instagram|tên\s*ingame)[:\s\.\;\-]+(.+)$/i);
+    if (igLineMatch) {
+      pendingIg = igLineMatch[1].replace(/^[:\-\s\.\;]+|[:\-\s\.\;,]+$/g, '').trim();
+      pendingRaw.push(trimmed);
+      continue;
+    }
+
+    // Trường hợp 3: Dòng chứa STK
+    // VD: "Stk: 497077", "STK 854726", "Skt 992884", "Stk.535295", "STK ingame : 807208"
+    const stkLineMatch = trimmed.match(/^(?:stk|skt|stk\s*ingame|số\s*tài\s*khoản)[:\s\.\;\-]*([0-9]{4,15})\b/i);
+    if (stkLineMatch) {
+      const stk = stkLineMatch[1].trim();
+      if (pendingIg) {
+        rawPairs.push({
+          ig: pendingIg,
+          stk,
+          raw: pendingRaw.concat(trimmed).join(' | '),
+        });
+        pendingIg = '';
+        pendingRaw = [];
+      } else {
+        rawPairs.push({
+          ig: '',
+          stk,
+          raw: trimmed,
+        });
+      }
+      continue;
+    }
+
+    // Trường hợp 4: Dự phòng cho dòng đơn lẻ nhưng có số STK (vd có người ghi mỗi số tài khoản)
+    const fallbackStk = trimmed.match(/\b([0-9]{5,10})\b/);
+    if (fallbackStk && pendingIg) {
+      rawPairs.push({
+        ig: pendingIg,
+        stk: fallbackStk[1],
+        raw: pendingRaw.concat(trimmed).join(' | '),
+      });
+      pendingIg = '';
+      pendingRaw = [];
+    }
+  }
 
   // Map các STK đã tồn tại trong database để check trùng
   const existingStkMap = new Map<string, string>();
@@ -13,54 +96,14 @@ export function parseIgStkInput(text: string, existingMembers: IgStkMember[]): P
     if (m.stk) existingStkMap.set(m.stk.trim().toLowerCase(), m.ig);
   }
 
-  for (const rawLine of lines) {
-    const trimmed = rawLine.trim();
-    if (!trimmed) continue;
+  const results: ParsedIgStkItem[] = [];
+  const seenStksInInput = new Set<string>();
 
-    // Loại bỏ các nhiễu Discord phổ biến:
-    // VD: [BUA] Team, 23:15, 11/11/2026, [10:30 PM], v.v.
-    let cleaned = trimmed
-      .replace(/\[\s*(?:bua|discord|nhóm|team)[^\]]*\]/gi, ' ')
-      .replace(/\[\s*\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]m)?\s*\]/gi, ' ') // [10:30 PM]
-      .replace(/\b\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]m)?\b/gi, ' ') // 10:30 PM
-      .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, ' ') // 11/11/2026
-      .replace(/\b\d{1,2}-\d{1,2}-\d{2,4}\b/g, ' ')
-      .replace(/\b(?:today|yesterday)\s+at\s+\d{1,2}:\d{2}\s*(?:am|pm)?/gi, ' ');
-
-    let ig = '';
-    let stk = '';
-
-    // Regex 1: Định dạng phổ biến: "IG: <tên> STK: <số>" (hỗ trợ IG, Ig, ig và STK, Stk, stk, số tài khoản)
-    const pattern1 = /(?:^|\b)(?:ig|instagram)[:\s\-]+(.+?)\s+(?:stk|số\s*tài\s*khoản|stk:?)[:\s\-]+([0-9]{4,15})\b/i;
-    const match1 = cleaned.match(pattern1);
-
-    if (match1) {
-      ig = match1[1].trim();
-      stk = match1[2].trim();
-    } else {
-      // Regex 2: Định dạng đảo ngược: "STK: <số> IG: <tên>"
-      const pattern2 = /(?:^|\b)(?:stk|số\s*tài\s*khoản)[:\s\-]+([0-9]{4,15})\s+(?:ig|instagram)[:\s\-]+(.+)$/i;
-      const match2 = cleaned.match(pattern2);
-      if (match2) {
-        stk = match2[1].trim();
-        ig = match2[2].trim();
-      } else {
-        // Regex 3: Thử tìm từ khóa IG và STK ở bất kỳ đâu trong dòng
-        const igMatch = cleaned.match(/(?:^|\b)(?:ig|instagram)[:\s\-]+([^,\n\r]+?)(?=\s+(?:stk|số\s*tài\s*khoản)|$)/i);
-        const stkMatch = cleaned.match(/(?:stk|số\s*tài\s*khoản)[:\s\-]*([0-9]{4,15})/i) || cleaned.match(/\b([0-9]{5,15})\b/);
-
-        if (igMatch) ig = igMatch[1].trim();
-        if (stkMatch) stk = stkMatch[1].trim();
-      }
-    }
-
-    // Làm sạch IG: bỏ các ký tự dấu câu thừa ở cuối (dấu phẩy, gạch nối, hai chấm)
-    ig = ig.replace(/^[:\-\s]+|[:\-\s,]+$/g, '').trim();
-
-    // Loại bỏ nếu người dùng dán số thứ tự vào đầu tên (vd: "1. Adam John" -> "Adam John")
+  for (const pair of rawPairs) {
+    let ig = pair.ig.replace(/^[:\-\s\.\;]+|[:\-\s\.\;,]+$/g, '').trim();
     ig = ig.replace(/^\d+[\.\-\)]\s*/, '').trim();
+    const stk = pair.stk.trim();
 
-    // Kiểm tra tính hợp lệ & trùng lặp
     let status: ParsedIgStkItem['status'] = 'valid';
     let statusText = '✓ Hợp lệ';
 
@@ -85,7 +128,7 @@ export function parseIgStkInput(text: string, existingMembers: IgStkMember[]): P
     }
 
     results.push({
-      raw: trimmed,
+      raw: pair.raw,
       ig,
       stk,
       status,
