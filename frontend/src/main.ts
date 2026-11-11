@@ -69,6 +69,7 @@ class TeamApp {
   }
 
   private syncModeButtonsUI(): void {
+    const isActive = this.tournamentState.isActive;
     const buttons = document.querySelectorAll('.btn-mode-toggle');
     buttons.forEach((btn) => {
       const bMode = btn.getAttribute('data-mode');
@@ -76,6 +77,19 @@ class TeamApp {
         btn.className = 't1-btn t1-btn-primary btn-mode-toggle';
       } else {
         btn.className = 't1-btn t1-btn-secondary btn-mode-toggle';
+      }
+
+      const buttonEl = btn as HTMLButtonElement;
+      if (isActive) {
+        buttonEl.disabled = true;
+        buttonEl.style.opacity = bMode === this.tournamentMode ? '1' : '0.45';
+        buttonEl.style.cursor = 'not-allowed';
+        buttonEl.title = '🔒 Giải đấu đang diễn ra! Hãy kết thúc giải với mã PIN 2000 trước khi đổi thể thức.';
+      } else {
+        buttonEl.disabled = false;
+        buttonEl.style.opacity = '1';
+        buttonEl.style.cursor = 'pointer';
+        buttonEl.title = `Chọn thể thức ${bMode?.toUpperCase()}`;
       }
     });
   }
@@ -563,6 +577,11 @@ class TeamApp {
   }
 
   private async setTournamentMode(mode: TournamentMode): Promise<void> {
+    if (this.tournamentState.isActive) {
+      Toast.warning('🔒 Giải đấu đang diễn ra! Không được đổi thể thức nữa. Hãy bấm kết thúc giải với mã PIN 2000 để bắt đầu giải mới.');
+      return;
+    }
+
     this.tournamentMode = mode;
     this.tournamentState.mode = mode;
 
@@ -573,7 +592,7 @@ class TeamApp {
     this.updateTournamentBanner();
 
     // Nếu đang ở Tab 2, tự động re-init lại đúng số ô theo thể thức vừa chọn
-    if (this.currentTab === 'create' && this.tournamentState.isActive) {
+    if (this.currentTab === 'create') {
       const createContent = document.getElementById('tab-content-create');
       if (createContent) {
         createContent.innerHTML = this.renderCreateTabContent();
@@ -583,7 +602,7 @@ class TeamApp {
     }
 
     const cap = this.getTargetCapacity();
-    Toast.success(`⚡ Đã chuyển sang thể thức ${mode.toUpperCase()} (Tự động ${cap > 0 ? `${cap} ô` : 'tự do'})`);
+    Toast.success(`⚡ Đã chuyển sang thể thức ${mode.toUpperCase()} (Tự tạo sẵn ${cap > 0 ? `${cap} ô` : 'tự do'})`);
     this.updateUI();
   }
 
@@ -750,8 +769,7 @@ class TeamApp {
         await apiService.setTournamentState(this.tournamentState);
         Toast.success('✅ ĐÃ KẾT THÚC GIẢI ĐẤU THÀNH CÔNG VỚI MÃ PIN 2000!');
         this.updateTournamentBanner();
-        const modeButtons = document.querySelectorAll('.btn-mode-toggle');
-        modeButtons.forEach((b) => b.removeAttribute('disabled'));
+        this.syncModeButtonsUI();
       });
     });
   }
