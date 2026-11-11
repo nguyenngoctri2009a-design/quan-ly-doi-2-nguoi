@@ -1,4 +1,4 @@
-import type { ApiResponse, BracketState, CreateTeamDto, MemberItem, Team, TeamListResponse, TournamentState, UpdateTeamDto } from '../types/team';
+import type { ApiResponse, BracketState, CreateTeamDto, IgStkMember, MemberItem, Team, TeamListResponse, TournamentState, UpdateTeamDto } from '../types/team';
 
 const FIREBASE_RTDB_URL = 'https://mechamay-7cbce-default-rtdb.asia-southeast1.firebasedatabase.app';
 const API_BASE = (import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/$/, '') : '') + '/api';
@@ -84,6 +84,61 @@ class ApiService {
       body: JSON.stringify(state),
     });
     if (!res.ok) throw new Error('Không thể lưu trạng thái vòng đấu lên Firebase');
+  }
+
+  // --- QUẢN LÝ DANH SÁCH IG - STK ---
+  public async getIgStkMembers(): Promise<IgStkMember[]> {
+    try {
+      const res = await fetch(`${FIREBASE_RTDB_URL}/igStkMembers.json`);
+      if (res.ok) {
+        const data: Record<string, IgStkMember> | null = await res.json();
+        if (data) {
+          return Object.values(data).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        }
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc igStkMembers từ Firebase:', e);
+    }
+    return [];
+  }
+
+  public async saveIgStkMembers(members: IgStkMember[]): Promise<void> {
+    const map: Record<string, IgStkMember> = {};
+    for (const m of members) {
+      map[m.id] = m;
+    }
+    const res = await fetch(`${FIREBASE_RTDB_URL}/igStkMembers.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(map),
+    });
+    if (!res.ok) throw new Error('Không thể lưu danh sách IG - STK lên Firebase');
+  }
+
+  public async addIgStkMembers(newMembers: IgStkMember[]): Promise<void> {
+    const existing = await this.getIgStkMembers();
+    const combined = [...newMembers, ...existing];
+    await this.saveIgStkMembers(combined);
+  }
+
+  public async updateIgStkMember(id: string, ig: string, stk: string): Promise<void> {
+    const res = await fetch(`${FIREBASE_RTDB_URL}/igStkMembers/${id}.json`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ig, stk, updatedAt: Date.now() }),
+    });
+    if (!res.ok) throw new Error('Không thể cập nhật thành viên IG - STK');
+  }
+
+  public async deleteIgStkMember(id: string): Promise<void> {
+    const res = await fetch(`${FIREBASE_RTDB_URL}/igStkMembers/${id}.json`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) throw new Error('Không thể xóa thành viên IG - STK');
+  }
+
+  public async bulkDeleteIgStkMembers(ids: string[]): Promise<void> {
+    await Promise.all(ids.map((id) => this.deleteIgStkMember(id)));
   }
 
   // --- TRỰC TIẾP FIREBASE REALTIME DATABASE CHO TEAMS ---

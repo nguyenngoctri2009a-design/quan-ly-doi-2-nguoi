@@ -1,6 +1,6 @@
 import { apiService } from './services/api';
 import { realtimeSSE } from './services/sse';
-import type { BracketState, CreateTeamDto, MemberItem, Team, TournamentMode, TournamentState, UpdateTeamDto } from './types/team';
+import type { BracketState, CreateTeamDto, IgStkMember, MemberItem, ParsedIgStkItem, Team, TournamentMode, TournamentState, UpdateTeamDto } from './types/team';
 import { renderKpiCards, type KpiData } from './components/KpiCards';
 import { renderTeamTable } from './components/TeamTable';
 import { TeamModal } from './components/TeamModal';
@@ -8,8 +8,10 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { PinModal } from './components/PinModal';
 import { Toast } from './components/Toast';
 import { advanceToNextRound, generateInitialBracket, renderBracketSection } from './components/BracketSection';
+import { exportIgStkToExcel, parseIgStkInput, renderIgStkTab } from './components/IgStkManager';
+import { IgStkEditModal } from './components/IgStkEditModal';
 
-type ActiveTab = 'list' | 'create' | 'manage';
+type ActiveTab = 'list' | 'create' | 'manage' | 'igstk';
 
 class TeamApp {
   private appRoot: HTMLElement;
@@ -23,6 +25,14 @@ class TeamApp {
   private bracketState: BracketState | null = null;
   private searchDebounceTimer: number | null = null;
 
+  // Quản lý danh sách IG - STK
+  private igStkMembers: IgStkMember[] = [];
+  private parsedIgStkItems: ParsedIgStkItem[] = [];
+  private igStkSearchQuery = '';
+  private selectedIgStkIds = new Set<string>();
+  private skipDuplicates = true;
+  private igStkEditModal!: IgStkEditModal;
+
   private teamModal!: TeamModal;
   private confirmModal!: ConfirmModal;
   private pinModal!: PinModal;
@@ -35,6 +45,7 @@ class TeamApp {
     this.teamModal = new TeamModal();
     this.confirmModal = new ConfirmModal();
     this.pinModal = new PinModal();
+    this.igStkEditModal = new IgStkEditModal();
 
     this.renderSkeleton();
     this.setupSSE();
@@ -42,6 +53,7 @@ class TeamApp {
     // Tải trạng thái giải đấu & sơ đồ vòng đấu đã lưu trước đó
     await this.fetchTournamentState();
     this.bracketState = await apiService.getBracketState();
+    this.igStkMembers = await apiService.getIgStkMembers();
     await this.fetchTeams();
   }
 
@@ -197,6 +209,10 @@ class TeamApp {
               <span>⚙️</span>
               <span>Tab 3: Chỉnh Tên, Thêm & Xóa Thành Viên</span>
             </button>
+            <button class="t1-tab-btn ${this.currentTab === 'igstk' ? 'active' : ''}" id="tab-nav-igstk">
+              <span>💳</span>
+              <span>Tab 4: Danh Sách IG – STK</span>
+            </button>
           </div>
 
           <!-- Tournament Mode Selector (Ẩn khi giải đấu đang diễn ra) -->
@@ -266,6 +282,11 @@ class TeamApp {
           <div id="tab-manage-container">
             ${this.renderManageTab()}
           </div>
+        </div>
+
+        <!-- TAB 4: DANH SÁCH IG – STK & NHẬP NHANH -->
+        <div id="tab-content-igstk" style="display: ${this.currentTab === 'igstk' ? 'block' : 'none'};">
+          ${renderIgStkTab(this.igStkMembers, this.parsedIgStkItems, this.igStkSearchQuery, this.selectedIgStkIds, this.skipDuplicates)}
         </div>
       </div>
     `;
@@ -532,13 +553,15 @@ class TeamApp {
     const tabListNav = document.getElementById('tab-nav-list');
     const tabCreateNav = document.getElementById('tab-nav-create');
     const tabManageNav = document.getElementById('tab-nav-manage');
+    const tabIgStkNav = document.getElementById('tab-nav-igstk');
 
     const contentList = document.getElementById('tab-content-list');
     const contentCreate = document.getElementById('tab-content-create');
     const contentManage = document.getElementById('tab-content-manage');
+    const contentIgStk = document.getElementById('tab-content-igstk');
 
-    [tabListNav, tabCreateNav, tabManageNav].forEach((btn) => btn?.classList.remove('active'));
-    [contentList, contentCreate, contentManage].forEach((el) => {
+    [tabListNav, tabCreateNav, tabManageNav, tabIgStkNav].forEach((btn) => btn?.classList.remove('active'));
+    [contentList, contentCreate, contentManage, contentIgStk].forEach((el) => {
       if (el) el.style.display = 'none';
     });
 
@@ -561,6 +584,10 @@ class TeamApp {
       tabManageNav?.classList.add('active');
       if (contentManage) contentManage.style.display = 'block';
       this.updateManageTab();
+    } else if (tab === 'igstk') {
+      tabIgStkNav?.classList.add('active');
+      if (contentIgStk) contentIgStk.style.display = 'block';
+      this.updateIgStkTab();
     }
   }
 
@@ -862,6 +889,219 @@ class TeamApp {
     }
   }
 
+  private updateIgStkTab(): void {
+    const container = document.getElementById('tab-content-igstk');
+    if (container) {
+      container.innerHTML = renderIgStkTab(
+        this.igStkMembers,
+        this.parsedIgStkItems,
+        this.igStkSearchQuery,
+        this.selectedIgStkIds,
+        this.skipDuplicates
+      );
+      this.bindIgStkEvents();
+    }
+  }
+
+  private bindIgStkEvents(): void {
+    const bulkTextarea = document.getElementById('textarea-bulk-input') as HTMLTextAreaElement;
+
+    // Nút phân tích dữ liệu dán vào
+    document.getElementById('btn-parse-data')?.addEventListener('click', () => {
+      const val = bulkTextarea ? bulkTextarea.value : '';
+      if (!val.trim()) {
+        Toast.warning('Vui lòng dán nội dung danh sách IG và STK từ Discord vào khung trước khi phân tích!');
+        return;
+      }
+      this.parsedIgStkItems = parseIgStkInput(val, this.igStkMembers);
+      if (this.parsedIgStkItems.length === 0) {
+        Toast.warning('Không tìm thấy dòng nào chứa định dạng IG và STK hợp lệ!');
+      } else {
+        const validCount = this.parsedIgStkItems.filter((p) => p.status === 'valid').length;
+        Toast.success(`⚡ Đã phân tích ${this.parsedIgStkItems.length} dòng (Tìm thấy ${validCount} bản ghi hợp lệ)`);
+      }
+      this.updateIgStkTab();
+    });
+
+    // Nút xóa vùng nhập
+    document.getElementById('btn-clear-bulk-input')?.addEventListener('click', () => {
+      if (bulkTextarea) bulkTextarea.value = '';
+      this.parsedIgStkItems = [];
+      this.updateIgStkTab();
+    });
+
+    // Checkbox bỏ qua STK trùng
+    const chkSkip = document.getElementById('chk-skip-duplicates') as HTMLInputElement;
+    chkSkip?.addEventListener('change', () => {
+      this.skipDuplicates = chkSkip.checked;
+    });
+
+    // Nút xác nhận thêm dữ liệu hợp lệ vào danh sách
+    document.getElementById('btn-confirm-add-parsed')?.addEventListener('click', async () => {
+      if (this.parsedIgStkItems.length === 0) return;
+
+      const itemsToAdd = this.parsedIgStkItems.filter((p) => {
+        if (this.skipDuplicates) {
+          return p.status === 'valid';
+        }
+        return p.status === 'valid' || p.status.includes('duplicate');
+      });
+
+      if (itemsToAdd.length === 0) {
+        Toast.warning('Không có bản ghi hợp lệ nào để thêm!');
+        return;
+      }
+
+      const newMembers: IgStkMember[] = itemsToAdd.map((item) => ({
+        id: crypto.randomUUID ? crypto.randomUUID() : `ig-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        ig: item.ig,
+        stk: item.stk,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }));
+
+      try {
+        await apiService.addIgStkMembers(newMembers);
+        this.igStkMembers = await apiService.getIgStkMembers();
+        this.parsedIgStkItems = [];
+        if (bulkTextarea) bulkTextarea.value = '';
+        Toast.success(`🎉 Đã thêm thành công ${newMembers.length} thành viên vào danh sách IG – STK!`);
+        this.updateIgStkTab();
+      } catch (err) {
+        Toast.error(`Lỗi khi lưu dữ liệu: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    });
+
+    // Xuất file Excel (.csv UTF-8 chuẩn mở ngay bằng Excel)
+    document.getElementById('btn-export-excel')?.addEventListener('click', () => {
+      exportIgStkToExcel(this.igStkMembers);
+      Toast.success('📊 Đang tải file danh sách Excel (.csv) về máy!');
+    });
+
+    // Tìm kiếm trong danh sách IG - STK
+    const searchInp = document.getElementById('search-ig-stk-input') as HTMLInputElement;
+    searchInp?.addEventListener('input', (e) => {
+      this.igStkSearchQuery = (e.target as HTMLInputElement).value;
+      this.updateIgStkTab();
+      const newInp = document.getElementById('search-ig-stk-input') as HTMLInputElement;
+      if (newInp) {
+        newInp.focus();
+        newInp.setSelectionRange(newInp.value.length, newInp.value.length);
+      }
+    });
+
+    // Chọn tất cả
+    const chkSelectAll = document.getElementById('chk-select-all') as HTMLInputElement;
+    chkSelectAll?.addEventListener('change', () => {
+      const q = this.igStkSearchQuery.trim().toLowerCase();
+      const filtered = this.igStkMembers.filter((m) => !q || m.ig.toLowerCase().includes(q) || m.stk.toLowerCase().includes(q));
+
+      if (chkSelectAll.checked) {
+        filtered.forEach((m) => this.selectedIgStkIds.add(m.id));
+      } else {
+        filtered.forEach((m) => this.selectedIgStkIds.delete(m.id));
+      }
+      this.updateIgStkTab();
+    });
+
+    // Chọn từng thành viên
+    const rowCheckboxes = document.querySelectorAll('.chk-select-member');
+    rowCheckboxes.forEach((chk) => {
+      chk.addEventListener('change', (e) => {
+        const id = (e.target as HTMLInputElement).getAttribute('data-id');
+        if (!id) return;
+        if ((e.target as HTMLInputElement).checked) {
+          this.selectedIgStkIds.add(id);
+        } else {
+          this.selectedIgStkIds.delete(id);
+        }
+        this.updateIgStkTab();
+      });
+    });
+
+    // Nút xóa các mục đã chọn (Bulk Delete)
+    document.getElementById('btn-bulk-delete')?.addEventListener('click', () => {
+      const count = this.selectedIgStkIds.size;
+      if (count === 0) return;
+
+      this.confirmModal.open(`${count} thành viên IG – STK đã chọn`, async () => {
+        try {
+          const ids = Array.from(this.selectedIgStkIds);
+          await apiService.bulkDeleteIgStkMembers(ids);
+          this.selectedIgStkIds.clear();
+          this.igStkMembers = await apiService.getIgStkMembers();
+          Toast.success(`Đã xóa thành công ${count} thành viên khỏi danh sách!`);
+          this.updateIgStkTab();
+        } catch (err) {
+          Toast.error(`Lỗi khi xóa hàng loạt: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+    });
+
+    // Nút copy nhanh IG / STK
+    const copyBtns = document.querySelectorAll('.btn-copy-text');
+    copyBtns.forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const text = btn.getAttribute('data-text') || '';
+        if (text) {
+          try {
+            await navigator.clipboard.writeText(text);
+            Toast.success(`📋 Đã sao chép: "${text}"`);
+          } catch {
+            const ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+            Toast.success(`📋 Đã sao chép: "${text}"`);
+          }
+        }
+      });
+    });
+
+    // Sửa từng thành viên
+    const editBtns = document.querySelectorAll('.btn-edit-ig-stk');
+    editBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const ig = btn.getAttribute('data-ig') || '';
+        const stk = btn.getAttribute('data-stk') || '';
+        if (!id) return;
+
+        this.igStkEditModal.open(ig, stk, async (newIg, newStk) => {
+          await apiService.updateIgStkMember(id, newIg, newStk);
+          this.igStkMembers = await apiService.getIgStkMembers();
+          Toast.success(`Đã cập nhật thông tin cho "${newIg}"`);
+          this.updateIgStkTab();
+        });
+      });
+    });
+
+    // Xóa từng thành viên
+    const deleteBtns = document.querySelectorAll('.btn-delete-ig-stk');
+    deleteBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const ig = btn.getAttribute('data-ig') || 'thành viên này';
+        if (!id) return;
+
+        this.confirmModal.open(`thành viên "${ig}" khỏi danh sách`, async () => {
+          try {
+            await apiService.deleteIgStkMember(id);
+            this.selectedIgStkIds.delete(id);
+            this.igStkMembers = await apiService.getIgStkMembers();
+            Toast.success(`Đã xóa "${ig}" thành công!`);
+            this.updateIgStkTab();
+          } catch (err) {
+            Toast.error(`Lỗi khi xóa: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        });
+      });
+    });
+  }
+
   private filteredTeams(): Team[] {
     if (!this.searchQuery.trim()) {
       return this.teams;
@@ -938,10 +1178,11 @@ class TeamApp {
     this.bindCreateTabEvents();
     this.bindBracketEvents();
 
-    // 3 Tabs
+    // 4 Tabs
     document.getElementById('tab-nav-list')?.addEventListener('click', () => this.switchTab('list'));
     document.getElementById('tab-nav-create')?.addEventListener('click', () => this.switchTab('create'));
     document.getElementById('tab-nav-manage')?.addEventListener('click', () => this.switchTab('manage'));
+    document.getElementById('tab-nav-igstk')?.addEventListener('click', () => this.switchTab('igstk'));
 
     // Thể thức
     const modeButtons = document.querySelectorAll('.btn-mode-toggle');

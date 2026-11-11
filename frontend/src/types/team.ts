@@ -37,6 +37,22 @@ export interface MemberItem {
   stk?: string; // STK gồm tối đa 6 số
 }
 
+export interface IgStkMember {
+  id: string;
+  ig: string;
+  stk: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ParsedIgStkItem {
+  raw: string;
+  ig: string;
+  stk: string;
+  status: 'valid' | 'duplicate_stk_db' | 'duplicate_stk_input' | 'invalid_ig' | 'invalid_stk';
+  statusText: string;
+}
+
 export interface Team {
   id: string;
   name: string;
