@@ -2,12 +2,11 @@ export interface KpiData {
   totalTeams: number;
   totalMembers: number;
   fullTeams: number;
+  targetPerTeam: number;
 }
 
 export function renderKpiCards(data: KpiData): string {
-  const capacityPercent = data.totalTeams > 0
-    ? Math.round((data.totalMembers / (data.totalTeams * 2)) * 100)
-    : 0;
+  const targetLabel = data.targetPerTeam > 0 ? `ĐỘI ĐỦ ${data.targetPerTeam} NGƯỜI` : 'ĐỘI ĐÃ CÓ THÀNH VIÊN';
 
   return `
     <div class="kpi-grid">
@@ -17,25 +16,25 @@ export function renderKpiCards(data: KpiData): string {
           <span>TỔNG SỐ ĐỘI</span>
         </div>
         <div class="t1-kpi-number" id="kpi-total-teams">${data.totalTeams}</div>
-        <div class="t1-kpi-sub">Đang hoạt động trong giải</div>
+        <div class="t1-kpi-sub">Đang tham gia giải</div>
       </div>
 
       <div class="t1-kpi-card">
         <div class="t1-kpi-title">
           <span>👥</span>
-          <span>THÀNH VIÊN ĐÃ NHẬP</span>
+          <span>TỔNG SỐ TUYỂN THỦ</span>
         </div>
-        <div class="t1-kpi-number" id="kpi-total-members">${data.totalMembers}</div>
-        <div class="t1-kpi-sub">Tỉ lệ lấp đầy slot: <strong style="color: var(--t1-primary);">${capacityPercent}%</strong></div>
+        <div class="t1-kpi-number" id="kpi-total-members" style="color: var(--t1-primary);">${data.totalMembers}</div>
+        <div class="t1-kpi-sub">Tổng người chơi trong giải</div>
       </div>
 
       <div class="t1-kpi-card">
         <div class="t1-kpi-title">
           <span>⚡</span>
-          <span>ĐỘI ĐỦ 2 NGƯỜI</span>
+          <span>${targetLabel}</span>
         </div>
         <div class="t1-kpi-number" id="kpi-full-teams" style="color: var(--t1-success);">${data.fullTeams}</div>
-        <div class="t1-kpi-sub">Sẵn sàng thi đấu ngay</div>
+        <div class="t1-kpi-sub">Sẵn sàng xuất trận</div>
       </div>
     </div>
   `;

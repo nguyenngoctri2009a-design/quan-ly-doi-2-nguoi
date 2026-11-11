@@ -5,8 +5,12 @@ use serde::{Deserialize, Serialize};
 pub struct Team {
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub member1: String,
+    #[serde(default)]
     pub member2: String,
+    #[serde(default)]
+    pub members: Vec<String>,
     pub custom_name: bool,
     pub created_at: i64,
     pub updated_at: i64,
@@ -18,6 +22,8 @@ pub struct CreateTeamDto {
     pub name: Option<String>,
     pub member1: Option<String>,
     pub member2: Option<String>,
+    #[serde(default)]
+    pub members: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -26,6 +32,8 @@ pub struct UpdateTeamDto {
     pub name: Option<String>,
     pub member1: Option<String>,
     pub member2: Option<String>,
+    #[serde(default)]
+    pub members: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]

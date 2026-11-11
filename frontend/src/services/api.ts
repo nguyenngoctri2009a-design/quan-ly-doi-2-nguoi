@@ -20,7 +20,6 @@ class ApiService {
       });
 
       if (response.status === 404) {
-        // Backend không tồn tại trên host này (ví dụ Vercel static), kích hoạt fallback Firebase
         console.warn('Backend API trả về 404, tự động chuyển sang chế độ Firebase Realtime Direct...');
         this.useDirectFirebase = true;
         return null;
@@ -35,7 +34,6 @@ class ApiService {
       return json.data as T;
     } catch (err) {
       if (err instanceof TypeError && err.message.includes('fetch')) {
-        // Không thể kết nối tới backend
         this.useDirectFirebase = true;
         return null;
       }
@@ -50,13 +48,23 @@ class ApiService {
     const data: Record<string, Team> | null = await res.json();
 
     const teams: Team[] = data ? Object.values(data) : [];
+    
+    // Đảm bảo members luôn có mảng đầy đủ
+    for (const t of teams) {
+      if (!t.members || !Array.isArray(t.members) || t.members.length === 0) {
+        const list: string[] = [];
+        if (t.member1?.trim()) list.push(t.member1.trim());
+        if (t.member2?.trim()) list.push(t.member2.trim());
+        t.members = list;
+      }
+    }
+
     teams.sort((a, b) => a.createdAt - b.createdAt);
 
     const totalTeams = teams.length;
     let totalMembers = 0;
     for (const t of teams) {
-      if (t.member1?.trim()) totalMembers++;
-      if (t.member2?.trim()) totalMembers++;
+      totalMembers += (t.members || []).filter((m) => m.trim().length > 0).length;
     }
 
     return { teams, totalTeams, totalMembers };
@@ -81,7 +89,17 @@ class ApiService {
 
   public async getTeams(search?: string): Promise<TeamListResponse> {
     const fromBackend = await this.tryBackend<TeamListResponse>(`/teams${search ? `?search=${encodeURIComponent(search)}` : ''}`);
-    if (fromBackend) return fromBackend;
+    if (fromBackend) {
+      for (const t of fromBackend.teams) {
+        if (!t.members || t.members.length === 0) {
+          const list: string[] = [];
+          if (t.member1?.trim()) list.push(t.member1.trim());
+          if (t.member2?.trim()) list.push(t.member2.trim());
+          t.members = list;
+        }
+      }
+      return fromBackend;
+    }
 
     const res = await this.firebaseGetTeams();
     if (search && search.trim()) {
@@ -89,6 +107,7 @@ class ApiService {
       res.teams = res.teams.filter(
         (t) =>
           t.name.toLowerCase().includes(q) ||
+          (t.members && t.members.some((m) => m.toLowerCase().includes(q))) ||
           t.member1.toLowerCase().includes(q) ||
           t.member2.toLowerCase().includes(q)
       );
@@ -115,13 +134,18 @@ class ApiService {
       finalName = `Đội ${nextNum}`;
     }
 
+    const members: string[] = dto.members && dto.members.length > 0
+      ? dto.members.map((m) => m.trim()).filter(Boolean)
+      : [dto.member1?.trim() || '', dto.member2?.trim() || ''].filter(Boolean);
+
     const now = Date.now();
     const id = 'team_' + Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
     const newTeam: Team = {
       id,
       name: finalName,
-      member1: dto.member1?.trim() || '',
-      member2: dto.member2?.trim() || '',
+      member1: members[0] || '',
+      member2: members[1] || '',
+      members,
       customName,
       createdAt: now,
       updatedAt: now,
@@ -158,11 +182,21 @@ class ApiService {
       }
     }
 
+    let updatedMembers = currentTeam.members || [];
+    if (dto.members !== undefined) {
+      updatedMembers = dto.members.map((m) => m.trim()).filter(Boolean);
+    } else {
+      const m1 = dto.member1 !== undefined ? dto.member1.trim() : currentTeam.member1;
+      const m2 = dto.member2 !== undefined ? dto.member2.trim() : currentTeam.member2;
+      updatedMembers = [m1, m2].filter(Boolean);
+    }
+
     const updatedTeam: Team = {
       ...currentTeam,
       name: updatedName,
-      member1: dto.member1 !== undefined ? dto.member1.trim() : currentTeam.member1,
-      member2: dto.member2 !== undefined ? dto.member2.trim() : currentTeam.member2,
+      member1: updatedMembers[0] || '',
+      member2: updatedMembers[1] || '',
+      members: updatedMembers,
       customName,
       updatedAt: Date.now(),
     };

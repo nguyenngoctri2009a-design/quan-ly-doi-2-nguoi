@@ -1,6 +1,6 @@
 import { apiService } from './services/api';
 import { realtimeSSE } from './services/sse';
-import type { CreateTeamDto, Team, UpdateTeamDto } from './types/team';
+import type { CreateTeamDto, Team, TournamentMode, UpdateTeamDto } from './types/team';
 import { renderKpiCards, type KpiData } from './components/KpiCards';
 import { renderTeamTable } from './components/TeamTable';
 import { TeamModal } from './components/TeamModal';
@@ -16,6 +16,7 @@ class TeamApp {
   private searchQuery = '';
   private isSseConnected = false;
   private currentTab: ActiveTab = 'list';
+  private tournamentMode: TournamentMode = '2v2';
   private searchDebounceTimer: number | null = null;
 
   private teamModal!: TeamModal;
@@ -34,21 +35,41 @@ class TeamApp {
     await this.fetchTeams();
   }
 
+  private getTargetCapacity(): number {
+    const map: Record<TournamentMode, number> = {
+      '1v1': 1,
+      '2v2': 2,
+      '3v3': 3,
+      '4v4': 4,
+      '5v5': 5,
+      '10v10': 10,
+      'custom': 0,
+    };
+    return map[this.tournamentMode];
+  }
+
   private calculateKpi(): KpiData {
     const totalTeams = this.teams.length;
     let totalMembers = 0;
     let fullTeams = 0;
+    const target = this.getTargetCapacity();
 
     for (const t of this.teams) {
-      const m1 = t.member1?.trim() ? 1 : 0;
-      const m2 = t.member2?.trim() ? 1 : 0;
-      totalMembers += m1 + m2;
-      if (m1 === 1 && m2 === 1) {
-        fullTeams += 1;
+      const members = (t.members && t.members.length > 0)
+        ? t.members
+        : [t.member1, t.member2].filter(Boolean);
+
+      const count = members.filter((m) => m.trim().length > 0).length;
+      totalMembers += count;
+
+      if (target > 0) {
+        if (count >= target) fullTeams += 1;
+      } else {
+        if (count > 0) fullTeams += 1;
       }
     }
 
-    return { totalTeams, totalMembers, fullTeams };
+    return { totalTeams, totalMembers, fullTeams, targetPerTeam: target };
   }
 
   private renderSkeleton(): void {
@@ -59,9 +80,9 @@ class TeamApp {
         <!-- Header -->
         <header class="app-header">
           <div class="brand-section">
-            <div class="brand-logo">2P</div>
+            <div class="brand-logo">🏆</div>
             <div class="brand-info">
-              <h1>HỆ THỐNG QUẢN LÝ ĐỘI 2 NGƯỜI</h1>
+              <h1>HỆ THỐNG QUẢN LÝ GIẢI ĐẤU ĐA CHẾ ĐỘ</h1>
               <div class="brand-sub">
                 <span id="sse-status-pill" class="t1-pill ${this.isSseConnected ? 't1-pill-success' : 't1-pill-warning'}">
                   ${this.isSseConnected ? '● Realtime Đang Bật' : '○ Đang Kết Nối Realtime...'}
@@ -72,16 +93,33 @@ class TeamApp {
           </div>
         </header>
 
-        <!-- HỆ THỐNG TAB ĐIỀU HƯỚNG RIÊNG BIỆT -->
-        <div class="t1-tabs-nav">
-          <button class="t1-tab-btn ${this.currentTab === 'list' ? 'active' : ''}" id="tab-nav-list">
-            <span>📋</span>
-            <span>Danh Sách Đội & KPI</span>
-          </button>
-          <button class="t1-tab-btn ${this.currentTab === 'create' ? 'active' : ''}" id="tab-nav-create">
-            <span>➕</span>
-            <span>Tạo Đội Mới (Tab Riêng)</span>
-          </button>
+        <!-- THANH ĐIỀU HƯỚNG TAB & CHỌN THỂ THỨC GIẢI -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;">
+          <!-- Tabs Navigation -->
+          <div class="t1-tabs-nav" style="margin-bottom: 0;">
+            <button class="t1-tab-btn ${this.currentTab === 'list' ? 'active' : ''}" id="tab-nav-list">
+              <span>📋</span>
+              <span>Danh Sách Đội & KPI</span>
+            </button>
+            <button class="t1-tab-btn ${this.currentTab === 'create' ? 'active' : ''}" id="tab-nav-create">
+              <span>➕</span>
+              <span>Tạo Đội Mới (Tab Riêng)</span>
+            </button>
+          </div>
+
+          <!-- Tournament Mode Selector -->
+          <div class="t1-card" style="padding: 6px 14px; display: flex; align-items: center; gap: 8px; border-radius: 16px;">
+            <span style="font-size: 11.5px; font-weight: 850; color: #64748b; text-transform: uppercase;">Thể Thức:</span>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="mode-buttons-container">
+              <button class="t1-btn ${this.tournamentMode === '1v1' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="1v1" style="padding: 4px 10px; font-size: 11.5px;">1v1 Solo</button>
+              <button class="t1-btn ${this.tournamentMode === '2v2' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="2v2" style="padding: 4px 10px; font-size: 11.5px;">2v2 Duo</button>
+              <button class="t1-btn ${this.tournamentMode === '3v3' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="3v3" style="padding: 4px 10px; font-size: 11.5px;">3v3 Trio</button>
+              <button class="t1-btn ${this.tournamentMode === '4v4' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="4v4" style="padding: 4px 10px; font-size: 11.5px;">4v4 Squad</button>
+              <button class="t1-btn ${this.tournamentMode === '5v5' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="5v5" style="padding: 4px 10px; font-size: 11.5px;">5v5 Team</button>
+              <button class="t1-btn ${this.tournamentMode === '10v10' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="10v10" style="padding: 4px 10px; font-size: 11.5px;">10v10 Đại Chiến</button>
+              <button class="t1-btn ${this.tournamentMode === 'custom' ? 't1-btn-primary' : 't1-btn-secondary'} btn-mode-toggle" data-mode="custom" style="padding: 4px 10px; font-size: 11.5px;">Tự Do</button>
+            </div>
+          </div>
         </div>
 
         <!-- TAB 1: DANH SÁCH ĐỘI & KPI -->
@@ -99,7 +137,7 @@ class TeamApp {
                 type="text"
                 id="search-input"
                 class="t1-input search-input-field"
-                placeholder="Tìm theo tên đội hoặc tên thành viên (tự động lọc sau 300ms)..."
+                placeholder="Tìm theo tên đội hoặc tên bất kỳ thành viên nào (tự lọc sau 300ms)..."
                 value="${this.searchQuery}"
               />
             </div>
@@ -110,21 +148,21 @@ class TeamApp {
 
           <!-- Team Table Section -->
           <div id="table-container">
-            ${renderTeamTable(this.teams, this.isLoading, this.searchQuery)}
+            ${renderTeamTable(this.teams, this.isLoading, this.searchQuery, this.tournamentMode)}
           </div>
         </div>
 
-        <!-- TAB 2: TẠO ĐỘI MỚI (TAB RIÊNG BIỆT, CỨ ẤN CỘNG LÀ HIỆN Ô NHẬP TÊN) -->
+        <!-- TAB 2: TẠO ĐỘI MỚI (TAB RIÊNG, CỨ ẤN CỘNG LÀ HIỆN Ô NHẬP TÊN) -->
         <div id="tab-content-create" style="display: ${this.currentTab === 'create' ? 'block' : 'none'};">
-          <div class="t1-card" style="max-width: 640px; margin: 0 auto; padding: 32px;">
-            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-              <span style="font-size: 28px;">🏆</span>
+          <div class="t1-card" style="max-width: 680px; margin: 0 auto; padding: 32px;">
+            <div style="display: flex; align-items: center; gap: 14px; margin-bottom: 8px;">
+              <span style="font-size: 32px;">⚡</span>
               <div>
                 <h2 style="margin: 0; font-size: 22px; font-weight: 900; color: var(--t1-text);">
-                  Đăng Ký Đội Thi Đấu Mới
+                  Đăng Ký Đội Vào Giải Đấu
                 </h2>
                 <div style="font-size: 13px; color: var(--t1-text-muted); font-weight: 600; margin-top: 2px;">
-                  Nhập tên đội tùy chỉnh hoặc để trống để nhận số mặc định tự động.
+                  Hỗ trợ mọi số lượng người (1, 2, 3, 4, 5, 10...). Cứ ấn nút cộng ＋ là thêm ô nhập tên.
                 </div>
               </div>
             </div>
@@ -138,20 +176,25 @@ class TeamApp {
                   type="text"
                   id="tab-input-team-name"
                   class="t1-input"
-                  placeholder="VD: Đội 1, Chiến Binh Rồng, Sát Thủ... (Để trống tự tăng)"
+                  placeholder="VD: Đội 1, Chiến Binh Rồng, Sát Thủ... (Để trống tự động cấp số)"
                   maxlength="50"
                 />
-                <div class="form-hint">Nếu để trống, hệ thống sẽ tự động cấp số thứ tự nhỏ nhất chưa dùng.</div>
+                <div class="form-hint">Để trống sẽ tự động lấy số thứ tự tiếp theo ("Đội 1", "Đội 2"...).</div>
               </div>
 
               <div class="form-group" style="margin-top: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
                   <label class="form-label" style="margin: 0;">
-                    DANH SÁCH THÀNH VIÊN (TỐI ĐA 2 NGƯỜI)
+                    DANH SÁCH THÀNH VIÊN TRONG ĐỘI
                   </label>
-                  <button type="button" class="t1-btn t1-btn-primary" id="tab-btn-add-member" style="padding: 7px 16px; font-size: 12.5px;">
-                    <span>＋ Thêm Ô Nhập Tên</span>
-                  </button>
+                  <div style="display: flex; gap: 8px;">
+                    <button type="button" class="t1-btn t1-btn-primary" id="tab-btn-add-member" style="padding: 7px 16px; font-size: 12.5px;">
+                      <span>＋ Thêm 1 Ô Nhập</span>
+                    </button>
+                    <button type="button" class="t1-btn t1-btn-gold" id="tab-btn-add-batch" style="padding: 7px 14px; font-size: 12.5px;" title="Thêm nhanh theo thể thức đang chọn">
+                      <span>⚡ Thêm Nhanh ${this.getTargetCapacity() > 0 ? this.getTargetCapacity() : 3} Ô</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div id="tab-member-inputs-container" class="member-inputs-container">
@@ -166,7 +209,7 @@ class TeamApp {
                   Làm Lại
                 </button>
                 <button type="submit" class="t1-btn t1-btn-success" id="tab-btn-submit-team" style="padding: 12px 28px; font-size: 14px;">
-                  <span>💾 Lưu Đội & Bắt Đầu</span>
+                  <span>💾 Lưu Đội & Xuất Trận</span>
                 </button>
               </div>
             </form>
@@ -200,20 +243,44 @@ class TeamApp {
     }
   }
 
+  private setTournamentMode(mode: TournamentMode): void {
+    this.tournamentMode = mode;
+    const buttons = document.querySelectorAll('.btn-mode-toggle');
+    buttons.forEach((btn) => {
+      const bMode = btn.getAttribute('data-mode');
+      if (bMode === mode) {
+        btn.className = 't1-btn t1-btn-primary btn-mode-toggle';
+      } else {
+        btn.className = 't1-btn t1-btn-secondary btn-mode-toggle';
+      }
+    });
+
+    const batchBtn = document.getElementById('tab-btn-add-batch');
+    if (batchBtn) {
+      const cap = this.getTargetCapacity();
+      batchBtn.innerHTML = `<span>⚡ Thêm Nhanh ${cap > 0 ? cap : 3} Ô</span>`;
+    }
+
+    this.updateUI();
+  }
+
   private initTabCreateForm(): void {
     const container = document.getElementById('tab-member-inputs-container');
     if (!container) return;
     container.innerHTML = '';
-    // Ban đầu tự tạo sẵn 1 ô đầu tiên
-    this.addTabMemberField('');
+    // Mặc định sinh sẵn số ô theo thể thức (ví dụ 2v2 thì 2 ô, 3v3 thì 3 ô, 5v5 thì 5 ô)
+    const initialCount = this.getTargetCapacity() > 0 ? this.getTargetCapacity() : 2;
+    for (let i = 0; i < Math.min(initialCount, 5); i++) {
+      this.addTabMemberField('');
+    }
   }
 
   private addTabMemberField(val = ''): void {
     const container = document.getElementById('tab-member-inputs-container');
     if (!container) return;
     const currentRows = container.querySelectorAll('.dynamic-member-row');
-    if (currentRows.length >= 2) {
-      Toast.warning('Mỗi đội tối đa 2 thành viên!');
+    if (currentRows.length >= 30) {
+      Toast.warning('Mỗi đội tối đa 30 thành viên!');
       return;
     }
 
@@ -241,7 +308,6 @@ class TeamApp {
     container.appendChild(row);
     const input = row.querySelector('input') as HTMLInputElement;
     input.focus();
-    this.updateTabAddBtnState();
   }
 
   private reindexTabMemberFields(): void {
@@ -254,16 +320,6 @@ class TeamApp {
       if (badge) badge.textContent = `#${idx + 1}`;
       if (input) input.placeholder = `Nhập tên thành viên ${idx + 1}...`;
     });
-    this.updateTabAddBtnState();
-  }
-
-  private updateTabAddBtnState(): void {
-    const container = document.getElementById('tab-member-inputs-container');
-    const addBtn = document.getElementById('tab-btn-add-member');
-    if (container && addBtn) {
-      const count = container.querySelectorAll('.dynamic-member-row').length;
-      addBtn.style.display = count >= 2 ? 'none' : 'inline-flex';
-    }
   }
 
   private updateUI(): void {
@@ -279,7 +335,7 @@ class TeamApp {
 
     const tableContainer = document.getElementById('table-container');
     if (tableContainer) {
-      tableContainer.innerHTML = renderTeamTable(this.filteredTeams(), this.isLoading, this.searchQuery);
+      tableContainer.innerHTML = renderTeamTable(this.filteredTeams(), this.isLoading, this.searchQuery, this.tournamentMode);
       this.bindTableButtons();
     }
 
@@ -298,6 +354,7 @@ class TeamApp {
     return this.teams.filter(
       (t) =>
         t.name.toLowerCase().includes(q) ||
+        (t.members && t.members.some((m) => m.toLowerCase().includes(q))) ||
         t.member1.toLowerCase().includes(q) ||
         t.member2.toLowerCase().includes(q)
     );
@@ -308,9 +365,26 @@ class TeamApp {
     document.getElementById('tab-nav-list')?.addEventListener('click', () => this.switchTab('list'));
     document.getElementById('tab-nav-create')?.addEventListener('click', () => this.switchTab('create'));
 
-    // Thêm ô nhập tên khi bấm dấu cộng trong Tab Tạo Đội
+    // Chuyển thể thức giải (1v1, 2v2, 3v3, 4v4, 5v5, 10v10, Tự do)
+    const modeButtons = document.querySelectorAll('.btn-mode-toggle');
+    modeButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = btn.getAttribute('data-mode') as TournamentMode;
+        if (mode) this.setTournamentMode(mode);
+      });
+    });
+
+    // Thêm 1 ô nhập khi bấm nút cộng
     document.getElementById('tab-btn-add-member')?.addEventListener('click', () => {
       this.addTabMemberField('');
+    });
+
+    // Thêm nhanh theo thể thức giải (3 ô, 5 ô, 10 ô)
+    document.getElementById('tab-btn-add-batch')?.addEventListener('click', () => {
+      const cap = this.getTargetCapacity() > 0 ? this.getTargetCapacity() : 3;
+      for (let i = 0; i < cap; i++) {
+        this.addTabMemberField('');
+      }
     });
 
     // Nút làm lại form
@@ -357,8 +431,6 @@ class TeamApp {
     });
 
     const name = nameInp ? nameInp.value.trim() : '';
-    const member1 = members[0] || '';
-    const member2 = members[1] || '';
 
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<span>Đang lưu...</span>';
@@ -367,8 +439,9 @@ class TeamApp {
     try {
       const dto: CreateTeamDto = {
         name: name || undefined,
-        member1: member1 || undefined,
-        member2: member2 || undefined,
+        members,
+        member1: members[0] || '',
+        member2: members[1] || '',
       };
       await this.handleCreateTeam(dto);
 
@@ -383,7 +456,7 @@ class TeamApp {
       errBox.style.display = 'block';
     } finally {
       submitBtn.disabled = false;
-      submitBtn.innerHTML = '<span>💾 Lưu Đội & Bắt Đầu</span>';
+      submitBtn.innerHTML = '<span>💾 Lưu Đội & Xuất Trận</span>';
     }
   }
 
@@ -409,20 +482,6 @@ class TeamApp {
         if (id) {
           this.confirmModal.open(name, async () => {
             await this.handleDeleteTeam(id, name);
-          });
-        }
-      });
-    });
-
-    // Nút cộng trực tiếp trong slot thành viên trên bảng
-    const slotAddBtns = document.querySelectorAll('.btn-slot-add');
-    slotAddBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const id = btn.getAttribute('data-id');
-        const team = this.teams.find((t) => t.id === id);
-        if (team) {
-          this.teamModal.open(team, async (dto) => {
-            await this.handleUpdateTeam(team.id, dto as UpdateTeamDto);
           });
         }
       });

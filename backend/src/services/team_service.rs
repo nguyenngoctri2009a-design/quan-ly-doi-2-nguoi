@@ -43,12 +43,10 @@ impl TeamService {
             .as_millis() as i64
     }
 
-    /// Tìm số thứ tự mặc định nhỏ nhất còn trống ("Đội 1", "Đội 2", ...)
     fn find_next_default_number(existing_teams: &[Team]) -> usize {
         let mut used_numbers = HashSet::new();
 
         for team in existing_teams {
-            // Chỉ xét các đội có format "Đội <số>"
             let trimmed = team.name.trim();
             if let Some(num_str) = trimmed.strip_prefix("Đội ") {
                 if let Ok(num) = num_str.trim().parse::<usize>() {
@@ -74,9 +72,24 @@ impl TeamService {
 
     pub async fn get_all_teams(&self, search: Option<String>) -> Result<TeamListResponse, AppError> {
         let teams_map = self.firebase.get_all_teams().await?;
-        let mut teams: Vec<Team> = teams_map.into_values().collect();
+        let mut teams: Vec<Team> = teams_map
+            .into_values()
+            .map(|mut t| {
+                // Đảm bảo members luôn có dữ liệu từ member1/member2 nếu rỗng
+                if t.members.is_empty() {
+                    let mut list = Vec::new();
+                    if !t.member1.trim().is_empty() {
+                        list.push(t.member1.trim().to_string());
+                    }
+                    if !t.member2.trim().is_empty() {
+                        list.push(t.member2.trim().to_string());
+                    }
+                    t.members = list;
+                }
+                t
+            })
+            .collect();
 
-        // Sắp xếp theo thời gian tạo tăng dần
         teams.sort_by_key(|t| t.created_at);
 
         if let Some(query) = search {
@@ -86,6 +99,7 @@ impl TeamService {
                     t.name.to_lowercase().contains(&q)
                         || t.member1.to_lowercase().contains(&q)
                         || t.member2.to_lowercase().contains(&q)
+                        || t.members.iter().any(|m| m.to_lowercase().contains(&q))
                 });
             }
         }
@@ -94,9 +108,13 @@ impl TeamService {
         let total_members = teams
             .iter()
             .map(|t| {
-                let m1 = if t.member1.trim().is_empty() { 0 } else { 1 };
-                let m2 = if t.member2.trim().is_empty() { 0 } else { 1 };
-                m1 + m2
+                if !t.members.is_empty() {
+                    t.members.iter().filter(|m| !m.trim().is_empty()).count()
+                } else {
+                    let m1 = if t.member1.trim().is_empty() { 0 } else { 1 };
+                    let m2 = if t.member2.trim().is_empty() { 0 } else { 1 };
+                    m1 + m2
+                }
             })
             .sum();
 
@@ -108,7 +126,6 @@ impl TeamService {
     }
 
     pub async fn create_team(&self, dto: CreateTeamDto) -> Result<Team, AppError> {
-        // Khóa mutex đảm bảo nguyên tử khi 2 request cùng tạo đội cùng tích tắc
         let _guard = self.mutation_lock.lock().await;
 
         let existing_map = self.firebase.get_all_teams().await?;
@@ -143,22 +160,41 @@ impl TeamService {
             }
         };
 
-        let member1 = dto.member1.unwrap_or_default().trim().to_string();
-        let member2 = dto.member2.unwrap_or_default().trim().to_string();
+        let members = if let Some(m_list) = dto.members {
+            m_list
+                .into_iter()
+                .map(|m| m.trim().to_string())
+                .filter(|m| !m.is_empty())
+                .collect()
+        } else {
+            let mut list = Vec::new();
+            if let Some(m1) = dto.member1 {
+                let t = m1.trim().to_string();
+                if !t.is_empty() {
+                    list.push(t);
+                }
+            }
+            if let Some(m2) = dto.member2 {
+                let t = m2.trim().to_string();
+                if !t.is_empty() {
+                    list.push(t);
+                }
+            }
+            list
+        };
 
-        if member1.chars().count() > self.config.max_member_name_length {
-            return Err(AppError::Validation(format!(
-                "Tên thành viên 1 không được vượt quá {} ký tự",
-                self.config.max_member_name_length
-            )));
+        // Giới hạn độ dài tên mỗi thành viên
+        for m in &members {
+            if m.chars().count() > self.config.max_member_name_length {
+                return Err(AppError::Validation(format!(
+                    "Tên thành viên '{m}' vượt quá {} ký tự",
+                    self.config.max_member_name_length
+                )));
+            }
         }
 
-        if member2.chars().count() > self.config.max_member_name_length {
-            return Err(AppError::Validation(format!(
-                "Tên thành viên 2 không được vượt quá {} ký tự",
-                self.config.max_member_name_length
-            )));
-        }
+        let member1 = members.get(0).cloned().unwrap_or_default();
+        let member2 = members.get(1).cloned().unwrap_or_default();
 
         let now = Self::now_millis();
         let new_id = Uuid::new_v4().to_string();
@@ -168,14 +204,13 @@ impl TeamService {
             name: final_name,
             member1,
             member2,
+            members,
             custom_name,
             created_at: now,
             updated_at: now,
         };
 
         self.firebase.put_team(&new_team).await?;
-
-        // Bắn sự kiện tới SSE stream
         let _ = self.event_tx.send(TeamEvent::TeamCreated(new_team.clone()));
 
         info!("Created team: {} (ID: {})", new_team.name, new_team.id);
@@ -228,32 +263,51 @@ impl TeamService {
             }
         }
 
-        if let Some(m1) = dto.member1 {
-            let trimmed = m1.trim().to_string();
-            if trimmed.chars().count() > self.config.max_member_name_length {
-                return Err(AppError::Validation(format!(
-                    "Tên thành viên 1 không được vượt quá {} ký tự",
-                    self.config.max_member_name_length
-                )));
-            }
-            if trimmed != team.member1 {
-                team.member1 = trimmed;
-                changed = true;
-            }
-        }
+        if let Some(m_list) = dto.members {
+            let cleaned: Vec<String> = m_list
+                .into_iter()
+                .map(|m| m.trim().to_string())
+                .filter(|m| !m.is_empty())
+                .collect();
 
-        if let Some(m2) = dto.member2 {
-            let trimmed = m2.trim().to_string();
-            if trimmed.chars().count() > self.config.max_member_name_length {
-                return Err(AppError::Validation(format!(
-                    "Tên thành viên 2 không được vượt quá {} ký tự",
-                    self.config.max_member_name_length
-                )));
+            for m in &cleaned {
+                if m.chars().count() > self.config.max_member_name_length {
+                    return Err(AppError::Validation(format!(
+                        "Tên thành viên '{m}' vượt quá {} ký tự",
+                        self.config.max_member_name_length
+                    )));
+                }
             }
-            if trimmed != team.member2 {
-                team.member2 = trimmed;
-                changed = true;
+
+            team.member1 = cleaned.get(0).cloned().unwrap_or_default();
+            team.member2 = cleaned.get(1).cloned().unwrap_or_default();
+            team.members = cleaned;
+            changed = true;
+        } else {
+            if let Some(m1) = dto.member1 {
+                let trimmed = m1.trim().to_string();
+                if trimmed != team.member1 {
+                    team.member1 = trimmed;
+                    changed = true;
+                }
             }
+
+            if let Some(m2) = dto.member2 {
+                let trimmed = m2.trim().to_string();
+                if trimmed != team.member2 {
+                    team.member2 = trimmed;
+                    changed = true;
+                }
+            }
+
+            let mut sync_members = Vec::new();
+            if !team.member1.is_empty() {
+                sync_members.push(team.member1.clone());
+            }
+            if !team.member2.is_empty() {
+                sync_members.push(team.member2.clone());
+            }
+            team.members = sync_members;
         }
 
         if changed {

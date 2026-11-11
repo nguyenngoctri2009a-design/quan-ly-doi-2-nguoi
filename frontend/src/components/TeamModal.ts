@@ -15,12 +15,12 @@ export class TeamModal {
 
   private render(): void {
     this.overlay.innerHTML = `
-      <div class="t1-modal-box">
+      <div class="t1-modal-box" style="max-width: 580px;">
         <h3 id="modal-title" style="margin-top: 0; margin-bottom: 8px; font-size: 20px; font-weight: 900; color: var(--t1-text);">
           Thêm Đội Mới
         </h3>
         <p id="modal-subtitle" style="margin: 0 0 20px 0; font-size: 13px; color: var(--t1-text-muted); font-weight: 600;">
-          Để trống tên đội để hệ thống tự sinh số mặc định ("Đội 1", "Đội 2"...).
+          Để trống tên đội để hệ thống tự sinh số mặc định. Bấm dấu ＋ để thêm thành viên (1v1, 2v2, 3v3, 5v5, 10v10...).
         </p>
 
         <form id="team-form">
@@ -37,14 +37,14 @@ export class TeamModal {
           </div>
 
           <div class="form-group" style="margin-bottom: 8px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-              <label class="form-label" style="margin: 0;">DANH SÁCH THÀNH VIÊN (TỐI ĐA 2 NGƯỜI)</label>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <label class="form-label" style="margin: 0;">DANH SÁCH THÀNH VIÊN</label>
               <button type="button" class="t1-btn t1-btn-primary" id="btn-add-member-input" style="padding: 6px 14px; font-size: 12px;">
                 <span>＋ Thêm Ô Nhập Tên</span>
               </button>
             </div>
             
-            <div id="modal-member-inputs-container" class="member-inputs-container">
+            <div id="modal-member-inputs-container" class="member-inputs-container" style="max-height: 280px; overflow-y: auto; padding-right: 4px;">
               <!-- Cứ ấn cộng sẽ tự sinh ô nhập tại đây -->
             </div>
           </div>
@@ -90,8 +90,8 @@ export class TeamModal {
     const container = this.overlay.querySelector('#modal-member-inputs-container') as HTMLElement;
     const currentRows = container.querySelectorAll('.dynamic-member-row');
 
-    if (currentRows.length >= 2) {
-      alert('Mỗi đội tối đa 2 thành viên!');
+    if (currentRows.length >= 25) {
+      alert('Tối đa 25 thành viên mỗi đội!');
       return;
     }
 
@@ -107,7 +107,7 @@ export class TeamModal {
         maxlength="50"
         value="${initialValue}"
       />
-      <button type="button" class="btn-remove-member" title="Xóa ô nhập">✕</button>
+      <button type="button" class="btn-remove-member" title="Xóa ô nhập này">✕</button>
     `;
 
     const removeBtn = row.querySelector('.btn-remove-member');
@@ -119,7 +119,6 @@ export class TeamModal {
     container.appendChild(row);
     const input = row.querySelector('input') as HTMLInputElement;
     input.focus();
-    this.updateAddButtonState();
   }
 
   private reindexMemberFields(): void {
@@ -131,16 +130,6 @@ export class TeamModal {
       if (badge) badge.textContent = `#${idx + 1}`;
       if (input) input.placeholder = `Nhập tên thành viên ${idx + 1}...`;
     });
-    this.updateAddButtonState();
-  }
-
-  private updateAddButtonState(): void {
-    const container = this.overlay.querySelector('#modal-member-inputs-container') as HTMLElement;
-    const addBtn = this.overlay.querySelector('#btn-add-member-input') as HTMLButtonElement;
-    const currentCount = container.querySelectorAll('.dynamic-member-row').length;
-    if (addBtn) {
-      addBtn.style.display = currentCount >= 2 ? 'none' : 'inline-flex';
-    }
   }
 
   public open(team?: Team, onSave?: (dto: CreateTeamDto | UpdateTeamDto, id?: string) => Promise<void>): void {
@@ -158,25 +147,25 @@ export class TeamModal {
 
     if (team) {
       titleEl.textContent = `Chỉnh Sửa: ${team.name}`;
-      subEl.textContent = 'Cập nhật lại tên đội hoặc thành viên.';
+      subEl.textContent = 'Cập nhật lại tên đội hoặc danh sách thành viên.';
       nameInput.value = team.name;
 
-      if (team.member1.trim()) this.addMemberField(team.member1.trim());
-      if (team.member2.trim()) this.addMemberField(team.member2.trim());
+      const members = (team.members && team.members.length > 0)
+        ? team.members
+        : [team.member1, team.member2].filter(Boolean);
 
-      // Nếu chưa có thành viên nào, tự tạo 1 ô mặc định
-      if (!team.member1.trim() && !team.member2.trim()) {
+      if (members.length > 0) {
+        members.forEach((m) => this.addMemberField(m));
+      } else {
         this.addMemberField('');
       }
     } else {
       titleEl.textContent = 'Thêm Đội Mới';
-      subEl.textContent = 'Để trống tên đội để hệ thống tự sinh số mặc định. Bấm dấu ＋ để thêm ô nhập thành viên.';
+      subEl.textContent = 'Để trống tên đội để tự sinh số. Cứ ấn ＋ để thêm các ô nhập tên thành viên.';
       nameInput.value = '';
-      // Tự động có sẵn 1 ô đầu tiên cho tiện
       this.addMemberField('');
     }
 
-    this.updateAddButtonState();
     this.overlay.classList.add('active');
     setTimeout(() => nameInput.focus(), 100);
   }
@@ -200,8 +189,6 @@ export class TeamModal {
     });
 
     const name = nameInput.value.trim();
-    const member1 = members[0] || '';
-    const member2 = members[1] || '';
 
     if (this.currentTeam && !name) {
       errBox.textContent = 'Tên đội không được để trống khi chỉnh sửa.';
@@ -216,13 +203,19 @@ export class TeamModal {
     try {
       if (this.onSaveCallback) {
         if (this.currentTeam) {
-          const dto: UpdateTeamDto = { name, member1, member2 };
+          const dto: UpdateTeamDto = {
+            name,
+            members,
+            member1: members[0] || '',
+            member2: members[1] || '',
+          };
           await this.onSaveCallback(dto, this.currentTeam.id);
         } else {
           const dto: CreateTeamDto = {
             name: name || undefined,
-            member1: member1 || undefined,
-            member2: member2 || undefined,
+            members,
+            member1: members[0] || undefined,
+            member2: members[1] || undefined,
           };
           await this.onSaveCallback(dto);
         }
