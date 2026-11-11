@@ -16,6 +16,44 @@ export function renderWaveToolbar(
   }
 
   const eliminatedCount = waveState?.eliminatedTeams?.length || 0;
+  const isChampion = (activeTeamsCount === 1 && eliminatedCount > 0) || Boolean(waveState?.championId);
+  const champName = waveState?.championName || (activeTeamsCount === 1 ? 'Đội Chiến Thắng' : '');
+
+  // Khi chỉ còn 1 đội duy nhất và đã hoàn tất các vòng loại -> Chuyển sang giao diện Vô Địch Chung Cuộc
+  if (isChampion) {
+    return `
+      <div class="t1-card" style="padding: 24px 30px; margin-bottom: 22px; background: linear-gradient(135deg, #fffbeb 0%, #fef08a 40%, #fde047 100%); border: 2px solid #eab308; box-shadow: 0 10px 28px rgba(234, 179, 8, 0.28);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+          <!-- Thông tin vinh danh nhà vô địch -->
+          <div style="display: flex; align-items: center; gap: 18px;">
+            <div style="font-size: 46px; filter: drop-shadow(0 4px 10px rgba(161, 98, 7, 0.35)); animation: bounceIcon 1.2s infinite alternate;">
+              👑
+            </div>
+            <div>
+              <div style="font-size: 20px; font-weight: 950; color: #854d0e; letter-spacing: -0.3px; display: flex; align-items: center; gap: 8px;">
+                <span>🏆 GIẢI ĐẤU ĐÃ TÌM RA NHÀ VÔ ĐỊCH CHUNG CUỘC!</span>
+              </div>
+              <div style="font-size: 14.5px; color: #a16207; font-weight: 800; margin-top: 4px;">
+                Chúc mừng <strong style="color: #713f12; text-decoration: underline; font-size: 15.5px;">${champName}</strong> đã xuất sắc vượt qua ${eliminatedCount} đối thủ sau ${currentWave} đợt thi đấu và giành ngôi Quán quân!
+              </div>
+            </div>
+          </div>
+
+          <!-- Nút hành động -->
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            ${eliminatedCount > 0 ? `
+              <button type="button" class="t1-btn t1-btn-secondary" id="btn-view-eliminated" style="padding: 10px 18px; font-size: 13px; font-weight: 900; background: #ffffff; border-color: #facc15; color: #854d0e; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+                <span>📜 XEM ĐỘI ĐÃ BỊ LOẠI (${eliminatedCount})</span>
+              </button>
+            ` : ''}
+            <button type="button" class="t1-btn t1-btn-danger" id="btn-end-tournament-champion" style="padding: 10px 20px; font-size: 13.5px; font-weight: 950; box-shadow: 0 4px 14px rgba(220, 38, 38, 0.25);">
+              <span>🏁 ĐÓNG GIẢI / LÀM MỚI</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   return `
     <div class="t1-card" style="padding: 18px 24px; margin-bottom: 20px; background: #ffffff; border: 1.5px solid #bae6fd; box-shadow: 0 4px 18px rgba(14, 165, 233, 0.08);">

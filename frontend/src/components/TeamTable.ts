@@ -85,40 +85,50 @@ export function renderTeamTable(
         </button>
       `;
 
-      // Điểm danh V / X theo đợt (Luôn hiển thị nút để quản lý tích nhanh)
+      // Điểm danh V / X theo đợt
       const currentStatus = waveAttendance?.teamStatus?.[team.id] || 'none';
       const isV = currentStatus === 'V';
       const isX = currentStatus === 'X';
+      const isTeamChampion = waveAttendance?.championId === team.id || (teams.length === 1 && (waveAttendance?.eliminatedTeams?.length || 0) > 0);
 
-      const attendanceCell = `
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <button
-            type="button"
-            class="t1-btn btn-toggle-v ${isV ? 't1-btn-success' : 't1-btn-secondary'}"
-            data-team-id="${team.id}"
-            data-current-val="${currentStatus}"
-            style="padding: 6px 14px; font-size: 13px; font-weight: 950; min-width: 58px; ${isV ? 'box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);' : 'opacity: 0.85;'}"
-            title="Tích V: Đủ điều kiện, tiếp tục vào Đợt ${currentWave + 1}"
-          >
-            <span>${isV ? '✓ V' : 'V'}</span>
-          </button>
-          <button
-            type="button"
-            class="t1-btn btn-toggle-x ${isX ? 't1-btn-danger' : 't1-btn-secondary'}"
-            data-team-id="${team.id}"
-            data-current-val="${currentStatus}"
-            style="padding: 6px 14px; font-size: 13px; font-weight: 950; min-width: 58px; ${isX ? 'box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);' : 'opacity: 0.85;'}"
-            title="Tích X: Bị loại khi hoàn tất Đợt ${currentWave}"
-          >
-            <span>${isX ? '✕ X' : 'X'}</span>
-          </button>
-        </div>
-      `;
+      let attendanceCell = '';
+      if (isTeamChampion) {
+        attendanceCell = `
+          <div style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 12px; background: linear-gradient(135deg, #fef08a 0%, #facc15 100%); color: #854d0e; font-weight: 950; font-size: 12.5px; box-shadow: 0 2px 8px rgba(202, 138, 4, 0.3); border: 1.5px solid #eab308;">
+            <span>👑</span> <span>CHIẾN THẮNG CHUNG CUỘC</span>
+          </div>
+        `;
+      } else {
+        attendanceCell = `
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <button
+              type="button"
+              class="t1-btn btn-toggle-v ${isV ? 't1-btn-success' : 't1-btn-secondary'}"
+              data-team-id="${team.id}"
+              data-current-val="${currentStatus}"
+              style="padding: 6px 14px; font-size: 13px; font-weight: 950; min-width: 58px; ${isV ? 'box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);' : 'opacity: 0.85;'}"
+              title="Tích V: Đủ điều kiện, tiếp tục vào Đợt ${currentWave + 1}"
+            >
+              <span>${isV ? '✓ V' : 'V'}</span>
+            </button>
+            <button
+              type="button"
+              class="t1-btn btn-toggle-x ${isX ? 't1-btn-danger' : 't1-btn-secondary'}"
+              data-team-id="${team.id}"
+              data-current-val="${currentStatus}"
+              style="padding: 6px 14px; font-size: 13px; font-weight: 950; min-width: 58px; ${isX ? 'box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);' : 'opacity: 0.85;'}"
+              title="Tích X: Bị loại khi hoàn tất Đợt ${currentWave}"
+            >
+              <span>${isX ? '✕ X' : 'X'}</span>
+            </button>
+          </div>
+        `;
+      }
 
       // Nhãn trạng thái hiển thị
       let statusPill = '';
-      if (waveAttendance?.championId === team.id) {
-        statusPill = `<span class="t1-pill t1-pill-gold" style="font-weight: 950;">👑 QUÁN QUÂN VÔ ĐỊCH</span>`;
+      if (isTeamChampion) {
+        statusPill = `<span class="t1-pill t1-pill-gold" style="font-weight: 950; font-size: 12.5px; padding: 6px 14px; box-shadow: 0 4px 12px rgba(234, 179, 8, 0.35);">🏆 QUÁN QUÂN VÔ ĐỊCH</span>`;
       } else if (isV) {
         statusPill = `<span class="t1-pill t1-pill-success" style="font-weight: 900;">✓ Đi tiếp Đợt ${currentWave + 1}</span>`;
       } else if (isX) {
@@ -136,8 +146,12 @@ export function renderTeamTable(
         }
       }
 
+      const rowStyle = isTeamChampion
+        ? 'background: linear-gradient(90deg, #fffbeb 0%, #fefce8 100%); border-left: 4px solid #eab308;'
+        : (isX ? 'background: #fff1f2;' : (isV ? 'background: #f0fdf4;' : ''));
+
       return `
-        <tr data-team-id="${team.id}" style="${isX ? 'background: #fff1f2;' : (isV ? 'background: #f0fdf4;' : '')}">
+        <tr data-team-id="${team.id}" style="${rowStyle}">
           <td style="width: 50px; text-align: center; font-size: 16px;">${rankBadge}</td>
           <td style="min-width: 150px;">
             <div style="display: flex; align-items: center;">

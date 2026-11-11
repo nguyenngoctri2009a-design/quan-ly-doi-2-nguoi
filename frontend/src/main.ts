@@ -1037,6 +1037,30 @@ class TeamApp {
       this.eliminatedTeamsModal.open(eliminated);
     });
 
+    // Nút kết thúc / đóng giải đấu khi đã có nhà vô địch
+    document.getElementById('btn-end-tournament-champion')?.addEventListener('click', () => {
+      this.confirmModal.open('kết thúc mùa giải này để làm mới hệ thống cho giải đấu tiếp theo', async () => {
+        this.tournamentState = {
+          isActive: false,
+          mode: this.tournamentMode,
+          endedAt: Date.now(),
+        };
+        this.waveState = null;
+        await apiService.setTournamentState(this.tournamentState);
+        await apiService.setWaveAttendanceState({
+          currentWave: 1,
+          teamStatus: {},
+          activeTeamIds: this.teams.map((t) => t.id),
+          eliminatedTeams: [],
+          updatedAt: Date.now(),
+        });
+        Toast.success('🏁 Đã đóng mùa giải thành công! Sẵn sàng cho giải đấu tiếp theo.');
+        this.updateTournamentBanner();
+        this.syncModeButtonsUI();
+        this.updateUI();
+      });
+    });
+
     // Nút Hoàn tất đợt (Chốt đợt & tự động loại đội X)
     document.getElementById('btn-complete-wave')?.addEventListener('click', () => {
       const currentWave = this.waveState ? this.waveState.currentWave : 1;
